@@ -108,6 +108,46 @@ pub struct VaultLimitsUpdated {
     pub max_per_transaction: u64,
     pub window_limit: u64,
     pub window_seconds: i64,
+    pub timelock_threshold: u64,
+    pub timelock_seconds: i64,
+    pub request_execution_window_seconds: i64,
     pub window_started_at: i64,
     pub window_spent: u64,
+}
+
+#[event]
+pub struct WithdrawalRequested {
+    pub vault: Pubkey,
+    pub vault_asset: Pubkey,
+    pub withdrawal_request: Pubkey,
+    pub proposer: Pubkey,
+    pub recipient_owner: Pubkey,
+    pub recipient_token_account: Pubkey,
+    pub mint: Pubkey,
+    pub withdrawal_id: u64,
+    pub amount: u64,
+    pub created_at: i64,
+    pub execute_after: i64,
+    pub expires_at: i64,
+}
+
+#[event]
+pub struct WithdrawalExecuted {
+    pub vault: Pubkey,
+    pub vault_asset: Pubkey,
+    pub withdrawal_request: Pubkey,
+    pub caller: Pubkey,
+    pub recipient_token_account: Pubkey,
+    pub mint: Pubkey,
+    pub withdrawal_id: u64,
+    pub amount: u64,
+}
+
+#[event]
+pub struct WithdrawalCancelled {
+    pub vault: Pubkey,
+    pub withdrawal_request: Pubkey,
+    pub caller: Pubkey,
+    pub proposer: Pubkey,
+    pub withdrawal_id: u64,
 }

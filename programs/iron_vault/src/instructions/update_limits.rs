@@ -38,13 +38,19 @@ pub fn update(
     max_per_transaction: u64,
     window_limit: u64,
     window_seconds: i64,
+    timelock_threshold: u64,
+    timelock_seconds: i64,
+    request_execution_window_seconds: i64,
 ) -> Result<()> {
     authorize(&ctx)?;
     require!(
         max_per_transaction > 0
             && window_limit > 0
             && window_seconds > 0
-            && max_per_transaction <= window_limit,
+            && max_per_transaction <= window_limit
+            && timelock_threshold <= max_per_transaction
+            && timelock_seconds > 0
+            && request_execution_window_seconds > 0,
         IronVaultError::InvalidWithdrawalPolicy
     );
 
@@ -70,6 +76,9 @@ pub fn update(
     asset.max_per_transaction = max_per_transaction;
     asset.window_limit = window_limit;
     asset.window_seconds = window_seconds;
+    asset.timelock_threshold = timelock_threshold;
+    asset.timelock_seconds = timelock_seconds;
+    asset.request_execution_window_seconds = request_execution_window_seconds;
 
     emit!(VaultLimitsUpdated {
         vault: ctx.accounts.vault.key(),
@@ -79,6 +88,9 @@ pub fn update(
         max_per_transaction,
         window_limit,
         window_seconds,
+        timelock_threshold,
+        timelock_seconds,
+        request_execution_window_seconds,
         window_started_at: asset.window_started_at,
         window_spent: asset.window_spent,
     });

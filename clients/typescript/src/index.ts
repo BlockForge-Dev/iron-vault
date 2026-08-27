@@ -33,4 +33,7 @@ export interface VaultWithdrawalPolicy {
   maxPerTransaction: bigint;
   windowLimit: bigint;
   windowSeconds: bigint;
+  timelockThreshold: bigint;
+  timelockSeconds: bigint;
+  requestExecutionWindowSeconds: bigint;
 }

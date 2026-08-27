@@ -6,7 +6,7 @@ is Rust using Anchor.
 
 The repository contains the Milestone 0 specification, reproducible Milestone 1
 toolchain, IronVault v0.1 classic SPL Token escrow lifecycle, and a multi-asset
-vault core with role permissions and Milestone 6 withdrawal limits:
+vault core with role permissions, withdrawal limits, and timelocked withdrawals:
 
 - [Protocol specification](docs/PROTOCOL_SPEC.md)
 - [Account and PDA model](docs/ACCOUNT_MODEL.md)
@@ -36,11 +36,15 @@ to an account owned by the immutable maker and using the immutable escrow mint.
 The vault supports creation, authority-only asset registration, permissionless
 deposits into canonical per-mint custody PDAs, and withdrawals by the authority
 or an active canonical role carrying `WITHDRAW`. Role grants use exact masks and
-revocation takes effect on the next call. The other reserved permission bits are
-stored but do not become operational until their corresponding instructions are
-implemented. Authorities or active `MANAGE_LIMITS` roles can configure positive
-per-transaction and rolling-window limits independently for every registered
-asset. Successful withdrawals atomically consume window capacity using checked
-arithmetic. Timelocks, pause controls, Token-2022, and multisig governance are
-not implemented. The code has not been deployed or independently audited and
-MUST NOT be represented as safe for arbitrary third-party mainnet funds.
+revocation takes effect on the next call. Authorities or active `MANAGE_LIMITS`
+roles can configure positive per-transaction and rolling-window limits
+independently for every registered asset. Successful withdrawals atomically
+consume window capacity using checked arithmetic. Amounts above an asset's
+instant threshold require an immutable, fixed-recipient withdrawal request.
+Authority or `REQUEST_WITHDRAWAL` operators can propose one; execution is
+permissionless only during its stored execution window, and later policy changes
+cannot shorten that request's original timelock. The authority, guardian,
+proposer, or an active `CANCEL_WITHDRAWAL` operator can cancel a pending request.
+Pause controls, Token-2022, and multisig governance are not implemented. The code
+has not been deployed or independently audited and MUST NOT be represented as
+safe for arbitrary third-party mainnet funds.

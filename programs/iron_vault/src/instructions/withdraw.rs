@@ -83,6 +83,11 @@ pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         IronVaultError::PerTransactionLimitExceeded
     );
     require_gte!(
+        ctx.accounts.vault_asset.timelock_threshold,
+        amount,
+        IronVaultError::TimelockRequired
+    );
+    require_gte!(
         ctx.accounts.vault_token.amount,
         amount,
         IronVaultError::InsufficientVaultFunds
@@ -154,7 +159,7 @@ pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     Ok(())
 }
 
-fn next_window_state(asset: &VaultAsset, amount: u64, now: i64) -> Result<(i64, u64)> {
+pub(crate) fn next_window_state(asset: &VaultAsset, amount: u64, now: i64) -> Result<(i64, u64)> {
     if asset.window_seconds == 0 {
         return Ok((asset.window_started_at, asset.window_spent));
     }

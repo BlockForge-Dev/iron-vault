@@ -13,7 +13,7 @@ use {
     },
     iron_vault::{
         constants::{PERMISSION_MANAGE_LIMITS, PERMISSION_REQUEST_WITHDRAWAL, PERMISSION_WITHDRAW},
-        state::{RoleAssignment, Vault, VaultAsset},
+        state::{RoleAssignment, Vault, VaultAsset, WithdrawalRequest, WithdrawalStatus},
         ID,
     },
     litesvm::{types::TransactionResult, LiteSVM},
@@ -148,6 +148,14 @@ fn asset_addresses(vault: Pubkey, mint: Pubkey) -> (Pubkey, Pubkey) {
 
 fn role_address(vault: Pubkey, principal: Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[b"role", vault.as_ref(), principal.as_ref()], &ID).0
+}
+
+fn withdrawal_address(vault: Pubkey, withdrawal_id: u64) -> Pubkey {
+    Pubkey::find_program_address(
+        &[b"withdrawal", vault.as_ref(), &withdrawal_id.to_le_bytes()],
+        &ID,
+    )
+    .0
 }
 
 fn create_vault_instruction(
@@ -366,6 +374,35 @@ fn update_limits_instruction(
     window_seconds: i64,
     role_assignment: Option<Pubkey>,
 ) -> anchor_lang::solana_program::instruction::Instruction {
+    update_full_policy_instruction(
+        fixture,
+        vault_id,
+        caller,
+        mint,
+        max_per_transaction,
+        window_limit,
+        window_seconds,
+        max_per_transaction,
+        3_600,
+        3_600,
+        role_assignment,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn update_full_policy_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    caller: Pubkey,
+    mint: Pubkey,
+    max_per_transaction: u64,
+    window_limit: u64,
+    window_seconds: i64,
+    timelock_threshold: u64,
+    timelock_seconds: i64,
+    request_execution_window_seconds: i64,
+    role_assignment: Option<Pubkey>,
+) -> anchor_lang::solana_program::instruction::Instruction {
     let vault = vault_address(fixture.authority.pubkey(), vault_id);
     let (vault_asset, _) = asset_addresses(vault, mint);
     let mut instruction = anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
@@ -374,6 +411,9 @@ fn update_limits_instruction(
             max_per_transaction,
             window_limit,
             window_seconds,
+            timelock_threshold,
+            timelock_seconds,
+            request_execution_window_seconds,
         }
         .data(),
         iron_vault::accounts::UpdateLimits {
@@ -382,6 +422,97 @@ fn update_limits_instruction(
             mint,
             vault_asset,
             clock: Clock::id(),
+        }
+        .to_account_metas(None),
+    );
+    if let Some(role_assignment) = role_assignment {
+        instruction
+            .accounts
+            .push(AccountMeta::new_readonly(role_assignment, false));
+    }
+    instruction
+}
+
+fn request_withdrawal_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    proposer: Pubkey,
+    recipient_token: Pubkey,
+    withdrawal_id: u64,
+    amount: u64,
+    role_assignment: Option<Pubkey>,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    let vault = vault_address(fixture.authority.pubkey(), vault_id);
+    let (vault_asset, _) = asset_addresses(vault, fixture.mint);
+    let withdrawal_request = withdrawal_address(vault, withdrawal_id);
+    let mut instruction = anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::RequestWithdrawal { amount }.data(),
+        iron_vault::accounts::RequestWithdrawal {
+            proposer,
+            vault,
+            mint: fixture.mint,
+            vault_asset,
+            recipient_token,
+            withdrawal_request,
+            system_program: system_program::ID,
+            clock: Clock::id(),
+        }
+        .to_account_metas(None),
+    );
+    if let Some(role_assignment) = role_assignment {
+        instruction
+            .accounts
+            .push(AccountMeta::new_readonly(role_assignment, false));
+    }
+    instruction
+}
+
+fn execute_withdrawal_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    withdrawal_id: u64,
+    caller: Pubkey,
+    mint: Pubkey,
+    recipient_token: Pubkey,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    let vault = vault_address(fixture.authority.pubkey(), vault_id);
+    let (vault_asset, vault_token) = asset_addresses(vault, mint);
+    let withdrawal_request = withdrawal_address(vault, withdrawal_id);
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::ExecuteWithdrawal {}.data(),
+        iron_vault::accounts::ExecuteWithdrawal {
+            caller,
+            vault,
+            mint,
+            vault_asset,
+            withdrawal_request,
+            vault_token,
+            recipient_token,
+            token_program: spl_token::ID,
+            clock: Clock::id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn cancel_withdrawal_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    withdrawal_id: u64,
+    caller: Pubkey,
+    role_assignment: Option<Pubkey>,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    let vault = vault_address(fixture.authority.pubkey(), vault_id);
+    let withdrawal_request = withdrawal_address(vault, withdrawal_id);
+    let mut instruction = anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::CancelWithdrawal {}.data(),
+        iron_vault::accounts::CancelWithdrawal {
+            caller,
+            vault,
+            withdrawal_request,
         }
         .to_account_metas(None),
     );
@@ -444,6 +575,11 @@ fn role_state(svm: &LiteSVM, address: Pubkey) -> RoleAssignment {
     RoleAssignment::try_deserialize(&mut account.data.as_slice()).unwrap()
 }
 
+fn withdrawal_state(svm: &LiteSVM, address: Pubkey) -> WithdrawalRequest {
+    let account = svm.get_account(&address).unwrap();
+    WithdrawalRequest::try_deserialize(&mut account.data.as_slice()).unwrap()
+}
+
 fn assert_error_message(result: TransactionResult, expected: &str) {
     let failure = result.expect_err("transaction unexpectedly succeeded");
     assert!(
@@ -500,6 +636,50 @@ fn configure_limits(
         None,
     );
     send(&mut fixture.svm, &fixture.authority, instruction).unwrap();
+}
+
+fn configure_timelock_policy(
+    fixture: &mut Fixture,
+    vault_id: u64,
+    timelock_threshold: u64,
+    timelock_seconds: i64,
+) {
+    let instruction = update_full_policy_instruction(
+        fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.mint,
+        INITIAL_DEPOSITOR_BALANCE,
+        INITIAL_DEPOSITOR_BALANCE,
+        86_400,
+        timelock_threshold,
+        timelock_seconds,
+        3_600,
+        None,
+    );
+    send(&mut fixture.svm, &fixture.authority, instruction).unwrap();
+}
+
+fn requested_fixture(
+    vault_id: u64,
+    amount: u64,
+    timelock_seconds: i64,
+) -> (Fixture, Pubkey, Pubkey, Pubkey, Pubkey) {
+    let (mut fixture, vault, vault_asset, vault_token) =
+        funded_fixture(vault_id, amount.saturating_mul(2));
+    configure_timelock_policy(&mut fixture, vault_id, 5_000, timelock_seconds);
+    let request = withdrawal_address(vault, 0);
+    let instruction = request_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        0,
+        amount,
+        None,
+    );
+    send(&mut fixture.svm, &fixture.authority, instruction).unwrap();
+    (fixture, vault, vault_asset, vault_token, request)
 }
 
 #[test]
@@ -1458,4 +1638,351 @@ fn invalid_and_live_duration_policy_updates_rejected() {
     let state = asset_state(&fixture.svm, vault_asset);
     assert_eq!(state.window_seconds, 100);
     assert_eq!(state.window_spent, 0);
+}
+
+#[test]
+fn large_direct_withdrawal_rejected() {
+    let vault_id = 60;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token) = funded_fixture(vault_id, amount);
+    configure_timelock_policy(&mut fixture, vault_id, 5_000, 100);
+    let withdrawal = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        amount,
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, withdrawal);
+
+    assert_error_message(result, "Withdrawal amount requires a timelocked request");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount);
+    assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
+}
+
+#[test]
+fn authorized_operator_can_create_request() {
+    let vault_id = 61;
+    let amount = 50_000;
+    let (mut fixture, vault, _, _) = funded_fixture(vault_id, amount);
+    configure_timelock_policy(&mut fixture, vault_id, 5_000, 100);
+    let operator = fixture.attacker.pubkey();
+    let role = role_address(vault, operator);
+    let grant = grant_role_instruction(&fixture, vault_id, operator, PERMISSION_REQUEST_WITHDRAWAL);
+    send(&mut fixture.svm, &fixture.authority, grant).unwrap();
+    let request_address = withdrawal_address(vault, 0);
+    let request = request_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        operator,
+        fixture.destination_token,
+        0,
+        amount,
+        Some(role),
+    );
+    send(&mut fixture.svm, &fixture.attacker, request).unwrap();
+
+    let state = withdrawal_state(&fixture.svm, request_address);
+    assert_eq!(state.proposer, operator);
+    assert_eq!(state.amount, amount);
+    assert_eq!(state.status, WithdrawalStatus::Pending);
+    assert_eq!(vault_state(&fixture.svm, vault).next_withdrawal_id, 1);
+}
+
+#[test]
+fn unauthorized_user_cannot_create_request() {
+    let vault_id = 62;
+    let amount = 50_000;
+    let (mut fixture, vault, _, _) = funded_fixture(vault_id, amount);
+    configure_timelock_policy(&mut fixture, vault_id, 5_000, 100);
+    let request_address = withdrawal_address(vault, 0);
+    let request = request_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        fixture.attacker.pubkey(),
+        fixture.destination_token,
+        0,
+        amount,
+        None,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, request);
+
+    assert_error_message(result, "Caller lacks the required vault permission");
+    assert!(fixture.svm.get_account(&request_address).is_none());
+    assert_eq!(vault_state(&fixture.svm, vault).next_withdrawal_id, 0);
+}
+
+#[test]
+fn execution_before_timelock_rejected() {
+    let vault_id = 63;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token, request) = requested_fixture(vault_id, amount, 100);
+    let execute = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, execute);
+
+    assert_error_message(result, "Withdrawal timelock has not elapsed");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount * 2);
+    assert_eq!(
+        withdrawal_state(&fixture.svm, request).status,
+        WithdrawalStatus::Pending
+    );
+}
+
+#[test]
+fn execution_after_timelock_succeeds() {
+    let vault_id = 64;
+    let amount = 50_000;
+    let (mut fixture, _, vault_asset, vault_token, request) =
+        requested_fixture(vault_id, amount, 100);
+    let execute_after = withdrawal_state(&fixture.svm, request).execute_after;
+    set_clock(&mut fixture.svm, execute_after);
+    let execute = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    send(&mut fixture.svm, &fixture.attacker, execute).unwrap();
+
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.destination_token),
+        amount
+    );
+    assert_eq!(
+        withdrawal_state(&fixture.svm, request).status,
+        WithdrawalStatus::Executed
+    );
+    assert_eq!(asset_state(&fixture.svm, vault_asset).window_spent, amount);
+}
+
+#[test]
+fn recipient_cannot_change() {
+    let vault_id = 65;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token, request) = requested_fixture(vault_id, amount, 100);
+    let execute_after = withdrawal_state(&fixture.svm, request).execute_after;
+    set_clock(&mut fixture.svm, execute_after);
+    let alternate_recipient = Pubkey::new_unique();
+    set_token_account(
+        &mut fixture.svm,
+        alternate_recipient,
+        fixture.mint,
+        fixture.attacker.pubkey(),
+        0,
+    );
+    let execute = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        alternate_recipient,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, execute);
+
+    assert_error_message(result, "Withdrawal recipient account does not match");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount * 2);
+    assert_eq!(token_balance(&fixture.svm, alternate_recipient), 0);
+    assert_eq!(
+        withdrawal_state(&fixture.svm, request).status,
+        WithdrawalStatus::Pending
+    );
+}
+
+#[test]
+fn amount_cannot_change() {
+    let vault_id = 66;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token, request) = requested_fixture(vault_id, amount, 100);
+    let state = withdrawal_state(&fixture.svm, request);
+    assert_eq!(state.amount, amount);
+    set_clock(&mut fixture.svm, state.execute_after);
+    let execute = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    assert_eq!(
+        execute.data.len(),
+        8,
+        "execute carries no mutable amount argument"
+    );
+    send(&mut fixture.svm, &fixture.attacker, execute).unwrap();
+
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.destination_token),
+        amount
+    );
+}
+
+#[test]
+fn mint_cannot_change() {
+    let vault_id = 67;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token, request) = requested_fixture(vault_id, amount, 100);
+    let execute_after = withdrawal_state(&fixture.svm, request).execute_after;
+    set_clock(&mut fixture.svm, execute_after);
+    let wrong_mint = Pubkey::new_unique();
+    set_mint(&mut fixture.svm, wrong_mint, fixture.authority.pubkey(), 0);
+    let execute = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        wrong_mint,
+        fixture.destination_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, execute);
+
+    assert!(result.is_err());
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount * 2);
+    assert_eq!(
+        withdrawal_state(&fixture.svm, request).status,
+        WithdrawalStatus::Pending
+    );
+}
+
+#[test]
+fn executed_request_cannot_execute_again() {
+    let vault_id = 68;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token, request) = requested_fixture(vault_id, amount, 100);
+    let execute_after = withdrawal_state(&fixture.svm, request).execute_after;
+    set_clock(&mut fixture.svm, execute_after);
+    let execute = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    send(&mut fixture.svm, &fixture.attacker, execute).unwrap();
+    let second = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, second);
+
+    assert_error_message(result, "Withdrawal request is not pending");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.destination_token),
+        amount
+    );
+}
+
+#[test]
+fn cancelled_request_cannot_execute() {
+    let vault_id = 69;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token, request) = requested_fixture(vault_id, amount, 100);
+    let state = withdrawal_state(&fixture.svm, request);
+    let cancel =
+        cancel_withdrawal_instruction(&fixture, vault_id, 0, fixture.authority.pubkey(), None);
+    send(&mut fixture.svm, &fixture.authority, cancel).unwrap();
+    set_clock(&mut fixture.svm, state.execute_after);
+    let execute = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, execute);
+
+    assert_error_message(result, "Withdrawal request is not pending");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount * 2);
+    assert_eq!(
+        withdrawal_state(&fixture.svm, request).status,
+        WithdrawalStatus::Cancelled
+    );
+}
+
+#[test]
+fn guardian_can_cancel() {
+    let vault_id = 70;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token, request) = requested_fixture(vault_id, amount, 100);
+    let cancel =
+        cancel_withdrawal_instruction(&fixture, vault_id, 0, fixture.guardian.pubkey(), None);
+    send(&mut fixture.svm, &fixture.guardian, cancel).unwrap();
+
+    assert_eq!(
+        withdrawal_state(&fixture.svm, request).status,
+        WithdrawalStatus::Cancelled
+    );
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount * 2);
+}
+
+#[test]
+fn policy_change_does_not_shorten_existing_request() {
+    let vault_id = 71;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token, request) = requested_fixture(vault_id, amount, 1_000);
+    let immutable = withdrawal_state(&fixture.svm, request);
+    let update = update_full_policy_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.mint,
+        INITIAL_DEPOSITOR_BALANCE,
+        INITIAL_DEPOSITOR_BALANCE,
+        86_400,
+        5_000,
+        1,
+        3_600,
+        None,
+    );
+    send(&mut fixture.svm, &fixture.authority, update).unwrap();
+    assert_eq!(
+        withdrawal_state(&fixture.svm, request).execute_after,
+        immutable.execute_after
+    );
+    set_clock(&mut fixture.svm, immutable.created_at + 1);
+    let early = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, early);
+    assert_error_message(result, "Withdrawal timelock has not elapsed");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount * 2);
+
+    set_clock(&mut fixture.svm, immutable.execute_after);
+    let mature = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    send(&mut fixture.svm, &fixture.attacker, mature).unwrap();
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.destination_token),
+        amount
+    );
 }

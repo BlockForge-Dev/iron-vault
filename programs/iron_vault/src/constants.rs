@@ -19,6 +19,9 @@ pub const VAULT_TOKEN_SEED: &[u8] = b"vault_token";
 /// Namespace for per-principal role assignment PDAs.
 pub const ROLE_SEED: &[u8] = b"role";
 
+/// Namespace for immutable timelocked withdrawal request PDAs.
+pub const WITHDRAWAL_SEED: &[u8] = b"withdrawal";
+
 pub const PERMISSION_WITHDRAW: u64 = 1 << 0;
 pub const PERMISSION_REQUEST_WITHDRAWAL: u64 = 1 << 1;
 pub const PERMISSION_CANCEL_WITHDRAWAL: u64 = 1 << 2;
@@ -53,6 +56,7 @@ mod tests {
         assert_eq!(VAULT_ASSET_SEED, b"vault_asset");
         assert_eq!(VAULT_TOKEN_SEED, b"vault_token");
         assert_eq!(ROLE_SEED, b"role");
+        assert_eq!(WITHDRAWAL_SEED, b"withdrawal");
     }
 
     #[test]

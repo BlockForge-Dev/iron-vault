@@ -126,4 +126,26 @@ pub enum IronVaultError {
     /// Limit management accepts no extra accounts for authorities and one role for operators.
     #[msg("Unexpected limit-management accounts")]
     UnexpectedLimitAccounts,
+    #[msg("Withdrawal amount requires a timelocked request")]
+    TimelockRequired,
+    #[msg("Withdrawal amount does not require a timelocked request")]
+    TimelockNotRequired,
+    #[msg("Withdrawal request timing overflow")]
+    WithdrawalTimingOverflow,
+    #[msg("Withdrawal request is not pending")]
+    WithdrawalNotPending,
+    #[msg("Withdrawal timelock has not elapsed")]
+    WithdrawalTimelockActive,
+    #[msg("Withdrawal request execution window has expired")]
+    WithdrawalRequestExpired,
+    #[msg("Withdrawal recipient account does not match the immutable request")]
+    InvalidWithdrawalRecipient,
+    #[msg("Withdrawal request mint does not match")]
+    InvalidWithdrawalMint,
+    #[msg("Caller cannot cancel this withdrawal request")]
+    UnauthorizedWithdrawalCancellation,
+    #[msg("Unexpected withdrawal-request authorization accounts")]
+    UnexpectedRequestAccounts,
+    #[msg("Unexpected withdrawal-cancellation authorization accounts")]
+    UnexpectedCancellationAccounts,
 }

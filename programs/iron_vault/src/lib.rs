@@ -83,7 +83,33 @@ pub mod iron_vault {
         max_per_transaction: u64,
         window_limit: u64,
         window_seconds: i64,
+        timelock_threshold: u64,
+        timelock_seconds: i64,
+        request_execution_window_seconds: i64,
     ) -> Result<()> {
-        instructions::update_limits::update(ctx, max_per_transaction, window_limit, window_seconds)
+        instructions::update_limits::update(
+            ctx,
+            max_per_transaction,
+            window_limit,
+            window_seconds,
+            timelock_threshold,
+            timelock_seconds,
+            request_execution_window_seconds,
+        )
+    }
+
+    /// Creates an immutable timelocked withdrawal request.
+    pub fn request_withdrawal(ctx: Context<RequestWithdrawal>, amount: u64) -> Result<()> {
+        instructions::request_withdrawal::request(ctx, amount)
+    }
+
+    /// Permissionlessly executes a mature request to its immutable destination.
+    pub fn execute_withdrawal(ctx: Context<ExecuteWithdrawal>) -> Result<()> {
+        instructions::execute_withdrawal::execute(ctx)
+    }
+
+    /// Cancels a pending request under an intrinsic or delegated cancellation authority.
+    pub fn cancel_withdrawal(ctx: Context<CancelWithdrawal>) -> Result<()> {
+        instructions::cancel_withdrawal::cancel(ctx)
     }
 }

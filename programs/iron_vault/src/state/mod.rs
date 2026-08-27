@@ -92,6 +92,39 @@ impl RoleAssignment {
     }
 }
 
+/// Terminal lifecycle states for a timelocked withdrawal request.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, InitSpace, PartialEq, Eq)]
+pub enum WithdrawalStatus {
+    Pending,
+    Executed,
+    Cancelled,
+}
+
+/// Immutable withdrawal intent plus its single mutable lifecycle status.
+#[account]
+#[derive(Debug, InitSpace)]
+pub struct WithdrawalRequest {
+    pub vault: Pubkey,
+    pub vault_asset: Pubkey,
+    pub mint: Pubkey,
+    pub token_program: Pubkey,
+    pub proposer: Pubkey,
+    pub recipient_owner: Pubkey,
+    pub recipient_token_account: Pubkey,
+    pub withdrawal_id: u64,
+    pub amount: u64,
+    pub created_at: i64,
+    pub execute_after: i64,
+    pub expires_at: i64,
+    pub status: WithdrawalStatus,
+    pub bump: u8,
+    pub reserved: [u8; 30],
+}
+
+impl WithdrawalRequest {
+    pub const SPACE: usize = 8 + Self::INIT_SPACE;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,5 +143,7 @@ mod tests {
         assert_eq!(VaultAsset::SPACE, 200);
         assert_eq!(RoleAssignment::INIT_SPACE, 128);
         assert_eq!(RoleAssignment::SPACE, 136);
+        assert_eq!(WithdrawalRequest::INIT_SPACE, 296);
+        assert_eq!(WithdrawalRequest::SPACE, 304);
     }
 }
