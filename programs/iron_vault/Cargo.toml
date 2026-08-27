@@ -1,0 +1,37 @@
+[package]
+name = "iron-vault"
+version = "0.1.0"
+description = "Secure asset custody, escrow, and policy-controlled vault infrastructure on Solana"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "iron_vault"
+
+[features]
+default = []
+anchor-debug = []
+cpi = ["no-entrypoint"]
+custom-heap = []
+custom-panic = []
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang.workspace = true
+anchor-spl = { workspace = true, features = ["token", "token_2022"] }
+
+[dev-dependencies]
+litesvm = "=0.13.1"
+solana-keypair = "=3.1.0"
+solana-message = "=3.1.0"
+solana-signer = "=3.0.0"
+solana-transaction = "=3.1.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

@@ -1,0 +1,16 @@
+[toolchain]
+package_manager = "pnpm"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+iron_vault = "2UWmTuefm4gqbfuZP36NSJMMSKLM4Rbop25jf1uBZAu1"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "cargo test --manifest-path programs/iron_vault/Cargo.toml --test test_initialize"

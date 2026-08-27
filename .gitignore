@@ -1,0 +1,10 @@
+target/
+node_modules/
+/clients/typescript/dist/
+.anchor/
+.pnpm-store/
+*.log
+.DS_Store
+
+# Generated deployment keypairs are secrets. Never commit them.
+*-keypair.json

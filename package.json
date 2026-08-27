@@ -1,0 +1,15 @@
+{
+  "name": "iron-vault-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.23.0",
+  "engines": {
+    "node": "24.10.0",
+    "pnpm": "11.23.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @iron-vault/sdk build",
+    "test": "pnpm --filter @iron-vault/sdk test",
+    "typecheck": "pnpm --filter @iron-vault/sdk typecheck"
+  }
+}

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.10.0
+      - name: Install pinned toolchain
+        run: bash scripts/install-toolchain.sh
+      - name: Restore Rust caches
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install locked SDK dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint program
+        run: cargo clippy --workspace --lib -- -D warnings
+      - name: Run Rust unit tests
+        run: cargo test --workspace --lib --locked
+      - name: Build SBF program
+        run: anchor build --ignore-keys
+      - name: Run Anchor LiteSVM test
+        run: anchor test --skip-build --skip-local-validator --skip-deploy
+      - name: Audit Rust dependencies
+        run: cargo audit
+      - name: Audit SDK dependencies
+        run: pnpm audit --audit-level high
+      - name: Run SDK tests
+        run: pnpm test
