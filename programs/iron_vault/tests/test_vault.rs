@@ -1,17 +1,18 @@
 use {
     anchor_lang::{
-        prelude::Pubkey,
+        prelude::{Clock, Pubkey},
         solana_program::{
             instruction::AccountMeta, program_option::COption, program_pack::Pack, system_program,
+            sysvar::SysvarId,
         },
-        AccountDeserialize, InstructionData, ToAccountMetas,
+        AccountDeserialize, AccountSerialize, InstructionData, ToAccountMetas,
     },
     anchor_spl::token::spl_token::{
         self,
         state::{Account as SplTokenAccount, AccountState, Mint as SplMint},
     },
     iron_vault::{
-        constants::{PERMISSION_REQUEST_WITHDRAWAL, PERMISSION_WITHDRAW},
+        constants::{PERMISSION_MANAGE_LIMITS, PERMISSION_REQUEST_WITHDRAWAL, PERMISSION_WITHDRAW},
         state::{RoleAssignment, Vault, VaultAsset},
         ID,
     },
@@ -172,15 +173,24 @@ fn register_asset_instruction(
     authority: Pubkey,
     vault_id: u64,
 ) -> anchor_lang::solana_program::instruction::Instruction {
+    register_asset_instruction_for_mint(fixture, authority, vault_id, fixture.mint)
+}
+
+fn register_asset_instruction_for_mint(
+    fixture: &Fixture,
+    authority: Pubkey,
+    vault_id: u64,
+    mint: Pubkey,
+) -> anchor_lang::solana_program::instruction::Instruction {
     let vault = vault_address(fixture.authority.pubkey(), vault_id);
-    let (vault_asset, vault_token) = asset_addresses(vault, fixture.mint);
+    let (vault_asset, vault_token) = asset_addresses(vault, mint);
     anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
         ID,
         &iron_vault::instruction::RegisterAsset {}.data(),
         iron_vault::accounts::RegisterAsset {
             authority,
             vault,
-            mint: fixture.mint,
+            mint,
             vault_asset,
             vault_token,
             token_program: spl_token::ID,
@@ -197,15 +207,33 @@ fn deposit_instruction(
     source_token: Pubkey,
     amount: u64,
 ) -> anchor_lang::solana_program::instruction::Instruction {
+    deposit_instruction_for_mint(
+        fixture,
+        vault_id,
+        depositor,
+        fixture.mint,
+        source_token,
+        amount,
+    )
+}
+
+fn deposit_instruction_for_mint(
+    fixture: &Fixture,
+    vault_id: u64,
+    depositor: Pubkey,
+    mint: Pubkey,
+    source_token: Pubkey,
+    amount: u64,
+) -> anchor_lang::solana_program::instruction::Instruction {
     let vault = vault_address(fixture.authority.pubkey(), vault_id);
-    let (vault_asset, vault_token) = asset_addresses(vault, fixture.mint);
+    let (vault_asset, vault_token) = asset_addresses(vault, mint);
     anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
         ID,
         &iron_vault::instruction::Deposit { amount }.data(),
         iron_vault::accounts::Deposit {
             depositor,
             vault,
-            mint: fixture.mint,
+            mint,
             vault_asset,
             source_token,
             vault_token,
@@ -240,15 +268,35 @@ fn withdraw_instruction_with_role(
     amount: u64,
     role_assignment: Option<Pubkey>,
 ) -> anchor_lang::solana_program::instruction::Instruction {
+    withdraw_instruction_with_role_for_mint(
+        fixture,
+        vault_id,
+        caller,
+        fixture.mint,
+        destination_token,
+        amount,
+        role_assignment,
+    )
+}
+
+fn withdraw_instruction_with_role_for_mint(
+    fixture: &Fixture,
+    vault_id: u64,
+    caller: Pubkey,
+    mint: Pubkey,
+    destination_token: Pubkey,
+    amount: u64,
+    role_assignment: Option<Pubkey>,
+) -> anchor_lang::solana_program::instruction::Instruction {
     let vault = vault_address(fixture.authority.pubkey(), vault_id);
-    let (vault_asset, vault_token) = asset_addresses(vault, fixture.mint);
+    let (vault_asset, vault_token) = asset_addresses(vault, mint);
     let mut instruction = anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
         ID,
         &iron_vault::instruction::Withdraw { amount }.data(),
         iron_vault::accounts::Withdraw {
             caller,
             vault,
-            mint: fixture.mint,
+            mint,
             vault_asset,
             vault_token,
             destination_token,
@@ -308,6 +356,43 @@ fn revoke_role_instruction(
     )
 }
 
+fn update_limits_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    caller: Pubkey,
+    mint: Pubkey,
+    max_per_transaction: u64,
+    window_limit: u64,
+    window_seconds: i64,
+    role_assignment: Option<Pubkey>,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    let vault = vault_address(fixture.authority.pubkey(), vault_id);
+    let (vault_asset, _) = asset_addresses(vault, mint);
+    let mut instruction = anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::UpdateLimits {
+            max_per_transaction,
+            window_limit,
+            window_seconds,
+        }
+        .data(),
+        iron_vault::accounts::UpdateLimits {
+            caller,
+            vault,
+            mint,
+            vault_asset,
+            clock: Clock::id(),
+        }
+        .to_account_metas(None),
+    );
+    if let Some(role_assignment) = role_assignment {
+        instruction
+            .accounts
+            .push(AccountMeta::new_readonly(role_assignment, false));
+    }
+    instruction
+}
+
 fn send(
     svm: &mut LiteSVM,
     payer: &Keypair,
@@ -337,6 +422,21 @@ fn vault_state(svm: &LiteSVM, address: Pubkey) -> Vault {
 fn asset_state(svm: &LiteSVM, address: Pubkey) -> VaultAsset {
     let account = svm.get_account(&address).unwrap();
     VaultAsset::try_deserialize(&mut account.data.as_slice()).unwrap()
+}
+
+fn set_asset_state(svm: &mut LiteSVM, address: Pubkey, state: &VaultAsset) {
+    let mut account = svm.get_account(&address).unwrap();
+    let mut data = Vec::with_capacity(VaultAsset::SPACE);
+    state.try_serialize(&mut data).unwrap();
+    assert_eq!(data.len(), VaultAsset::SPACE);
+    account.data = data;
+    svm.set_account(address, account).unwrap();
+}
+
+fn set_clock(svm: &mut LiteSVM, unix_timestamp: i64) {
+    let mut clock: Clock = svm.get_sysvar();
+    clock.unix_timestamp = unix_timestamp;
+    svm.set_sysvar(&clock);
 }
 
 fn role_state(svm: &LiteSVM, address: Pubkey) -> RoleAssignment {
@@ -379,6 +479,27 @@ fn funded_fixture(vault_id: u64, amount: u64) -> (Fixture, Pubkey, Pubkey, Pubke
     );
     send(&mut fixture.svm, &fixture.depositor, deposit).unwrap();
     (fixture, vault, vault_asset, vault_token)
+}
+
+fn configure_limits(
+    fixture: &mut Fixture,
+    vault_id: u64,
+    mint: Pubkey,
+    max_per_transaction: u64,
+    window_limit: u64,
+    window_seconds: i64,
+) {
+    let instruction = update_limits_instruction(
+        fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        mint,
+        max_per_transaction,
+        window_limit,
+        window_seconds,
+        None,
+    );
+    send(&mut fixture.svm, &fixture.authority, instruction).unwrap();
 }
 
 #[test]
@@ -977,4 +1098,364 @@ fn authority_withdraw_rejects_unexpected_accounts() {
     assert_error_message(result, "Unexpected withdrawal accounts");
     assert_eq!(token_balance(&fixture.svm, vault_token), amount);
     assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
+}
+
+#[test]
+fn withdraw_inside_limit_succeeds() {
+    let vault_id = 40;
+    let deposit_amount = 60_000;
+    let amount = 7_000;
+    let (mut fixture, _, vault_asset, vault_token) = funded_fixture(vault_id, deposit_amount);
+    let mint = fixture.mint;
+    configure_limits(&mut fixture, vault_id, mint, 10_000, 50_000, 86_400);
+    let withdrawal = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        amount,
+    );
+    send(&mut fixture.svm, &fixture.authority, withdrawal).unwrap();
+
+    assert_eq!(
+        token_balance(&fixture.svm, vault_token),
+        deposit_amount - amount
+    );
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.destination_token),
+        amount
+    );
+    assert_eq!(asset_state(&fixture.svm, vault_asset).window_spent, amount);
+}
+
+#[test]
+fn per_tx_limit_enforced() {
+    let vault_id = 41;
+    let deposit_amount = 20_000;
+    let (mut fixture, _, vault_asset, vault_token) = funded_fixture(vault_id, deposit_amount);
+    let mint = fixture.mint;
+    configure_limits(&mut fixture, vault_id, mint, 10_000, 50_000, 86_400);
+    let withdrawal = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        10_001,
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, withdrawal);
+
+    assert_error_message(result, "Per-transaction withdrawal limit exceeded");
+    assert_eq!(token_balance(&fixture.svm, vault_token), deposit_amount);
+    assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
+    assert_eq!(asset_state(&fixture.svm, vault_asset).window_spent, 0);
+}
+
+#[test]
+fn window_limit_enforced() {
+    let vault_id = 42;
+    let deposit_amount = 60_000;
+    let (mut fixture, _, vault_asset, vault_token) = funded_fixture(vault_id, deposit_amount);
+    let mint = fixture.mint;
+    configure_limits(&mut fixture, vault_id, mint, 10_000, 50_000, 86_400);
+
+    for amount in [10_000, 10_000, 10_000, 10_000, 8_000] {
+        let withdrawal = withdraw_instruction(
+            &fixture,
+            vault_id,
+            fixture.authority.pubkey(),
+            fixture.destination_token,
+            amount,
+        );
+        send(&mut fixture.svm, &fixture.authority, withdrawal).unwrap();
+    }
+    assert_eq!(asset_state(&fixture.svm, vault_asset).window_spent, 48_000);
+
+    let rejected = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        7_000,
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, rejected);
+    assert_error_message(result, "Rolling-window withdrawal limit exceeded");
+    assert_eq!(token_balance(&fixture.svm, vault_token), 12_000);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.destination_token),
+        48_000
+    );
+    assert_eq!(asset_state(&fixture.svm, vault_asset).window_spent, 48_000);
+}
+
+#[test]
+fn window_rolls_over() {
+    let vault_id = 43;
+    let deposit_amount = 30_000;
+    let (mut fixture, _, vault_asset, vault_token) = funded_fixture(vault_id, deposit_amount);
+    let mint = fixture.mint;
+    configure_limits(&mut fixture, vault_id, mint, 10_000, 10_000, 100);
+    let first = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        8_000,
+    );
+    send(&mut fixture.svm, &fixture.authority, first).unwrap();
+    let first_window = asset_state(&fixture.svm, vault_asset);
+    let rollover_at = first_window.window_started_at + first_window.window_seconds;
+    set_clock(&mut fixture.svm, rollover_at);
+
+    let second = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        7_000,
+    );
+    send(&mut fixture.svm, &fixture.authority, second).unwrap();
+    let rolled = asset_state(&fixture.svm, vault_asset);
+    assert_eq!(rolled.window_started_at, rollover_at);
+    assert_eq!(rolled.window_spent, 7_000);
+    assert_eq!(token_balance(&fixture.svm, vault_token), 15_000);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.destination_token),
+        15_000
+    );
+}
+
+#[test]
+fn overflow_cannot_bypass_limit() {
+    let vault_id = 44;
+    let amount = 1;
+    let (mut fixture, _, vault_asset, vault_token) = funded_fixture(vault_id, amount);
+    let mint = fixture.mint;
+    configure_limits(&mut fixture, vault_id, mint, u64::MAX, u64::MAX, 1_000);
+    let mut corrupted = asset_state(&fixture.svm, vault_asset);
+    corrupted.window_spent = u64::MAX;
+    set_asset_state(&mut fixture.svm, vault_asset, &corrupted);
+
+    let withdrawal = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        amount,
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, withdrawal);
+
+    assert_error_message(result, "Withdrawal policy arithmetic overflow");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount);
+    assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
+    assert_eq!(
+        asset_state(&fixture.svm, vault_asset).window_spent,
+        u64::MAX
+    );
+}
+
+#[test]
+fn different_assets_have_independent_limits() {
+    let vault_id = 45;
+    let first_amount = 20_000;
+    let second_amount = 30_000;
+    let (mut fixture, vault, first_asset, first_vault_token) =
+        funded_fixture(vault_id, first_amount);
+    let first_mint = fixture.mint;
+    let second_mint = Pubkey::new_unique();
+    let second_source = Pubkey::new_unique();
+    let second_destination = Pubkey::new_unique();
+    set_mint(
+        &mut fixture.svm,
+        second_mint,
+        fixture.depositor.pubkey(),
+        second_amount,
+    );
+    set_token_account(
+        &mut fixture.svm,
+        second_source,
+        second_mint,
+        fixture.depositor.pubkey(),
+        second_amount,
+    );
+    set_token_account(
+        &mut fixture.svm,
+        second_destination,
+        second_mint,
+        fixture.attacker.pubkey(),
+        0,
+    );
+    let register_second = register_asset_instruction_for_mint(
+        &fixture,
+        fixture.authority.pubkey(),
+        vault_id,
+        second_mint,
+    );
+    send(&mut fixture.svm, &fixture.authority, register_second).unwrap();
+    let (second_asset, second_vault_token) = asset_addresses(vault, second_mint);
+    let deposit_second = deposit_instruction_for_mint(
+        &fixture,
+        vault_id,
+        fixture.depositor.pubkey(),
+        second_mint,
+        second_source,
+        second_amount,
+    );
+    send(&mut fixture.svm, &fixture.depositor, deposit_second).unwrap();
+    configure_limits(&mut fixture, vault_id, first_mint, 10_000, 10_000, 100);
+    configure_limits(&mut fixture, vault_id, second_mint, 20_000, 20_000, 100);
+
+    let first_withdrawal = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        10_000,
+    );
+    send(&mut fixture.svm, &fixture.authority, first_withdrawal).unwrap();
+    let first_rejected = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        1,
+    );
+    assert_error_message(
+        send(&mut fixture.svm, &fixture.authority, first_rejected),
+        "Rolling-window withdrawal limit exceeded",
+    );
+    let second_withdrawal = withdraw_instruction_with_role_for_mint(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        second_mint,
+        second_destination,
+        15_000,
+        None,
+    );
+    send(&mut fixture.svm, &fixture.authority, second_withdrawal).unwrap();
+
+    assert_eq!(asset_state(&fixture.svm, first_asset).window_spent, 10_000);
+    assert_eq!(asset_state(&fixture.svm, second_asset).window_spent, 15_000);
+    assert_eq!(token_balance(&fixture.svm, first_vault_token), 10_000);
+    assert_eq!(token_balance(&fixture.svm, second_vault_token), 15_000);
+    assert_eq!(token_balance(&fixture.svm, second_destination), 15_000);
+}
+
+#[test]
+fn different_vaults_have_independent_limits() {
+    let first_vault_id = 46;
+    let second_vault_id = 47;
+    let amount = 10_000;
+    let (mut fixture, _, first_asset, first_vault_token) = funded_fixture(first_vault_id, amount);
+    let mint = fixture.mint;
+    let create_second = create_vault_instruction(
+        fixture.authority.pubkey(),
+        second_vault_id,
+        fixture.guardian.pubkey(),
+    );
+    send(&mut fixture.svm, &fixture.authority, create_second).unwrap();
+    let register_second =
+        register_asset_instruction(&fixture, fixture.authority.pubkey(), second_vault_id);
+    send(&mut fixture.svm, &fixture.authority, register_second).unwrap();
+    let second_vault = vault_address(fixture.authority.pubkey(), second_vault_id);
+    let (second_asset, second_vault_token) = asset_addresses(second_vault, mint);
+    let deposit_second = deposit_instruction(
+        &fixture,
+        second_vault_id,
+        fixture.depositor.pubkey(),
+        fixture.depositor_token,
+        amount,
+    );
+    send(&mut fixture.svm, &fixture.depositor, deposit_second).unwrap();
+    configure_limits(&mut fixture, first_vault_id, mint, amount, amount, 100);
+    configure_limits(&mut fixture, second_vault_id, mint, amount, amount, 100);
+
+    for vault_id in [first_vault_id, second_vault_id] {
+        let withdrawal = withdraw_instruction(
+            &fixture,
+            vault_id,
+            fixture.authority.pubkey(),
+            fixture.destination_token,
+            amount,
+        );
+        send(&mut fixture.svm, &fixture.authority, withdrawal).unwrap();
+    }
+
+    assert_eq!(asset_state(&fixture.svm, first_asset).window_spent, amount);
+    assert_eq!(asset_state(&fixture.svm, second_asset).window_spent, amount);
+    assert_eq!(token_balance(&fixture.svm, first_vault_token), 0);
+    assert_eq!(token_balance(&fixture.svm, second_vault_token), 0);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.destination_token),
+        amount * 2
+    );
+}
+
+#[test]
+fn operator_with_manage_limits_can_update_policy() {
+    let vault_id = 48;
+    let (mut fixture, vault, vault_asset, _) = registered_fixture(vault_id);
+    let operator = fixture.attacker.pubkey();
+    let role = role_address(vault, operator);
+    let grant = grant_role_instruction(&fixture, vault_id, operator, PERMISSION_MANAGE_LIMITS);
+    send(&mut fixture.svm, &fixture.authority, grant).unwrap();
+    let update = update_limits_instruction(
+        &fixture,
+        vault_id,
+        operator,
+        fixture.mint,
+        10_000,
+        50_000,
+        86_400,
+        Some(role),
+    );
+    send(&mut fixture.svm, &fixture.attacker, update).unwrap();
+
+    let state = asset_state(&fixture.svm, vault_asset);
+    assert_eq!(state.max_per_transaction, 10_000);
+    assert_eq!(state.window_limit, 50_000);
+    assert_eq!(state.window_seconds, 86_400);
+}
+
+#[test]
+fn invalid_and_live_duration_policy_updates_rejected() {
+    let vault_id = 49;
+    let (mut fixture, _, vault_asset, _) = registered_fixture(vault_id);
+    for (max_per_transaction, window_limit, window_seconds) in
+        [(0, 10, 10), (11, 10, 10), (1, 0, 10), (1, 10, 0)]
+    {
+        let update = update_limits_instruction(
+            &fixture,
+            vault_id,
+            fixture.authority.pubkey(),
+            fixture.mint,
+            max_per_transaction,
+            window_limit,
+            window_seconds,
+            None,
+        );
+        let result = send(&mut fixture.svm, &fixture.authority, update);
+        assert_error_message(result, "Withdrawal policy is invalid");
+    }
+
+    let mint = fixture.mint;
+    configure_limits(&mut fixture, vault_id, mint, 10, 100, 100);
+    let duration_change = update_limits_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.mint,
+        10,
+        100,
+        200,
+        None,
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, duration_change);
+    assert_error_message(
+        result,
+        "Cannot change duration while the withdrawal window is live",
+    );
+    let state = asset_state(&fixture.svm, vault_asset);
+    assert_eq!(state.window_seconds, 100);
+    assert_eq!(state.window_spent, 0);
 }

@@ -108,4 +108,22 @@ pub enum IronVaultError {
     /// Withdrawal accepts no extra accounts for authorities and exactly one role for operators.
     #[msg("Unexpected withdrawal accounts")]
     UnexpectedWithdrawalAccounts,
+    /// Withdrawal limits must be positive and internally consistent.
+    #[msg("Withdrawal policy is invalid")]
+    InvalidWithdrawalPolicy,
+    /// The requested amount exceeds the configured per-transaction maximum.
+    #[msg("Per-transaction withdrawal limit exceeded")]
+    PerTransactionLimitExceeded,
+    /// The requested amount would exceed the configured rolling-window maximum.
+    #[msg("Rolling-window withdrawal limit exceeded")]
+    WindowLimitExceeded,
+    /// Checked policy arithmetic failed.
+    #[msg("Withdrawal policy arithmetic overflow")]
+    WithdrawalPolicyOverflow,
+    /// A live accounting window retains its original duration.
+    #[msg("Cannot change duration while the withdrawal window is live")]
+    LiveWindowDurationChange,
+    /// Limit management accepts no extra accounts for authorities and one role for operators.
+    #[msg("Unexpected limit-management accounts")]
+    UnexpectedLimitAccounts,
 }

@@ -97,3 +97,17 @@ pub struct RoleRevoked {
     pub principal: Pubkey,
     pub previous_permissions: u64,
 }
+
+/// Emitted after an authorized caller updates one asset's withdrawal limits.
+#[event]
+pub struct VaultLimitsUpdated {
+    pub vault: Pubkey,
+    pub vault_asset: Pubkey,
+    pub mint: Pubkey,
+    pub caller: Pubkey,
+    pub max_per_transaction: u64,
+    pub window_limit: u64,
+    pub window_seconds: i64,
+    pub window_started_at: i64,
+    pub window_spent: u64,
+}

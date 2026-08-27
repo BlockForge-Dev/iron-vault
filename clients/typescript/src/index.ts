@@ -27,3 +27,10 @@ export const VAULT_PERMISSIONS = Object.freeze({
 } as const);
 
 export type VaultPermissionName = keyof typeof VAULT_PERMISSIONS;
+
+/** Base-unit withdrawal limits for one registered vault asset. */
+export interface VaultWithdrawalPolicy {
+  maxPerTransaction: bigint;
+  windowLimit: bigint;
+  windowSeconds: bigint;
+}

@@ -1,11 +1,10 @@
 use {
     crate::{
-        constants::{
-            PERMISSION_WITHDRAW, ROLE_SEED, VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED,
-        },
+        constants::{PERMISSION_WITHDRAW, VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED},
         error::IronVaultError,
         events::VaultWithdrawal,
-        state::{RoleAssignment, Vault, VaultAsset},
+        security::permissions::validate_role_permission,
+        state::{Vault, VaultAsset},
     },
     anchor_lang::prelude::*,
     anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
@@ -25,6 +24,7 @@ pub struct Withdraw<'info> {
     pub vault: Account<'info, Vault>,
     pub mint: Account<'info, Mint>,
     #[account(
+        mut,
         seeds = [VAULT_ASSET_SEED, vault.key().as_ref(), mint.key().as_ref()],
         bump = vault_asset.bump,
         has_one = vault,
@@ -64,10 +64,11 @@ pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
             1,
             IronVaultError::MissingVaultPermission
         );
-        validate_withdraw_role(
+        validate_role_permission(
             &ctx.remaining_accounts[0],
             &ctx.accounts.vault,
             ctx.accounts.caller.key(),
+            PERMISSION_WITHDRAW,
         )?;
     }
     require_gt!(amount, 0, IronVaultError::InvalidVaultAmount);
@@ -77,10 +78,21 @@ pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         IronVaultError::VaultAssetDisabled
     );
     require_gte!(
+        ctx.accounts.vault_asset.max_per_transaction,
+        amount,
+        IronVaultError::PerTransactionLimitExceeded
+    );
+    require_gte!(
         ctx.accounts.vault_token.amount,
         amount,
         IronVaultError::InsufficientVaultFunds
     );
+
+    let (next_window_start, next_window_spent) = next_window_state(
+        &ctx.accounts.vault_asset,
+        amount,
+        Clock::get()?.unix_timestamp,
+    )?;
 
     let custody_before = ctx.accounts.vault_token.amount;
     let destination_before = ctx.accounts.destination_token.amount;
@@ -124,6 +136,10 @@ pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         destination_after,
         IronVaultError::InvalidWithdrawalDestinationBalance
     );
+    if ctx.accounts.vault_asset.window_seconds > 0 {
+        ctx.accounts.vault_asset.window_started_at = next_window_start;
+        ctx.accounts.vault_asset.window_spent = next_window_spent;
+    }
 
     emit!(VaultWithdrawal {
         vault: ctx.accounts.vault.key(),
@@ -138,43 +154,33 @@ pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     Ok(())
 }
 
-fn validate_withdraw_role(
-    role_info: &AccountInfo<'_>,
-    vault: &Account<'_, Vault>,
-    caller: Pubkey,
-) -> Result<()> {
-    let (expected_role, _) = Pubkey::find_program_address(
-        &[ROLE_SEED, vault.key().as_ref(), caller.as_ref()],
-        &crate::ID,
-    );
-    require_keys_eq!(
-        *role_info.key,
-        expected_role,
-        IronVaultError::MissingVaultPermission
-    );
-    require_keys_eq!(
-        *role_info.owner,
-        crate::ID,
-        IronVaultError::MissingVaultPermission
+fn next_window_state(asset: &VaultAsset, amount: u64, now: i64) -> Result<(i64, u64)> {
+    if asset.window_seconds == 0 {
+        return Ok((asset.window_started_at, asset.window_spent));
+    }
+    require_gt!(
+        asset.window_seconds,
+        0,
+        IronVaultError::InvalidWithdrawalPolicy
     );
 
-    let data = role_info.try_borrow_data()?;
-    let role = RoleAssignment::try_deserialize(&mut data.as_ref())
-        .map_err(|_| error!(IronVaultError::MissingVaultPermission))?;
-    require_keys_eq!(
-        role.vault,
-        vault.key(),
-        IronVaultError::MissingVaultPermission
-    );
-    require_keys_eq!(
-        role.principal,
-        caller,
-        IronVaultError::MissingVaultPermission
-    );
-    require!(
-        role.has(PERMISSION_WITHDRAW),
-        IronVaultError::MissingVaultPermission
+    let window_ends = asset
+        .window_started_at
+        .checked_add(asset.window_seconds)
+        .ok_or(IronVaultError::WithdrawalPolicyOverflow)?;
+    let (window_start, spent_before) = if now >= window_ends {
+        (now, 0)
+    } else {
+        (asset.window_started_at, asset.window_spent)
+    };
+    let spent_after = spent_before
+        .checked_add(amount)
+        .ok_or(IronVaultError::WithdrawalPolicyOverflow)?;
+    require_gte!(
+        asset.window_limit,
+        spent_after,
+        IronVaultError::WindowLimitExceeded
     );
 
-    Ok(())
+    Ok((window_start, spent_after))
 }

@@ -6,7 +6,7 @@ is Rust using Anchor.
 
 The repository contains the Milestone 0 specification, reproducible Milestone 1
 toolchain, IronVault v0.1 classic SPL Token escrow lifecycle, and a multi-asset
-vault core with Milestone 5 role permissions:
+vault core with role permissions and Milestone 6 withdrawal limits:
 
 - [Protocol specification](docs/PROTOCOL_SPEC.md)
 - [Account and PDA model](docs/ACCOUNT_MODEL.md)
@@ -38,7 +38,9 @@ deposits into canonical per-mint custody PDAs, and withdrawals by the authority
 or an active canonical role carrying `WITHDRAW`. Role grants use exact masks and
 revocation takes effect on the next call. The other reserved permission bits are
 stored but do not become operational until their corresponding instructions are
-implemented. Asset limits initialize to unrestricted core defaults; enforced
-withdrawal limits, timelocks, pause controls, Token-2022, and multisig governance
-are not implemented. The code has not been deployed or independently audited
-and MUST NOT be represented as safe for arbitrary third-party mainnet funds.
+implemented. Authorities or active `MANAGE_LIMITS` roles can configure positive
+per-transaction and rolling-window limits independently for every registered
+asset. Successful withdrawals atomically consume window capacity using checked
+arithmetic. Timelocks, pause controls, Token-2022, and multisig governance are
+not implemented. The code has not been deployed or independently audited and
+MUST NOT be represented as safe for arbitrary third-party mainnet funds.

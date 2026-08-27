@@ -7,6 +7,7 @@ pub mod refund_escrow;
 pub mod register_asset;
 pub mod release_escrow;
 pub mod revoke_role;
+pub mod update_limits;
 pub mod withdraw;
 
 pub use create_escrow::*;
@@ -18,4 +19,5 @@ pub use refund_escrow::*;
 pub use register_asset::*;
 pub use release_escrow::*;
 pub use revoke_role::*;
+pub use update_limits::*;
 pub use withdraw::*;

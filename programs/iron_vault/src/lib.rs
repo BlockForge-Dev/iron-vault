@@ -2,6 +2,7 @@ pub mod constants;
 pub mod error;
 pub mod events;
 pub mod instructions;
+pub mod security;
 pub mod state;
 
 use anchor_lang::prelude::*;
@@ -74,5 +75,15 @@ pub mod iron_vault {
     /// Immediately clears and deactivates a role assignment.
     pub fn revoke_role(ctx: Context<RevokeRole>, principal: Pubkey) -> Result<()> {
         instructions::revoke_role::revoke(ctx, principal)
+    }
+
+    /// Updates one asset's per-transaction and rolling-window withdrawal limits.
+    pub fn update_limits(
+        ctx: Context<UpdateLimits>,
+        max_per_transaction: u64,
+        window_limit: u64,
+        window_seconds: i64,
+    ) -> Result<()> {
+        instructions::update_limits::update(ctx, max_per_transaction, window_limit, window_seconds)
     }
 }
