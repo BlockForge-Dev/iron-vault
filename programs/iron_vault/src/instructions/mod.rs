@@ -1,9 +1,17 @@
 pub mod create_escrow;
+pub mod create_vault;
+pub mod deposit;
 pub mod initialize;
 pub mod refund_escrow;
+pub mod register_asset;
 pub mod release_escrow;
+pub mod withdraw;
 
 pub use create_escrow::*;
+pub use create_vault::*;
+pub use deposit::*;
 pub use initialize::*;
 pub use refund_escrow::*;
+pub use register_asset::*;
 pub use release_escrow::*;
+pub use withdraw::*;

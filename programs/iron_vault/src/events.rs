@@ -37,3 +37,47 @@ pub struct EscrowRefunded {
     pub mint: Pubkey,
     pub amount: u64,
 }
+
+/// Emitted when an authority creates a new vault namespace.
+#[event]
+pub struct VaultCreated {
+    pub vault: Pubkey,
+    pub namespace_authority: Pubkey,
+    pub authority: Pubkey,
+    pub guardian: Pubkey,
+    pub vault_id: u64,
+}
+
+/// Emitted when a classic SPL mint is registered with a vault.
+#[event]
+pub struct VaultAssetRegistered {
+    pub vault: Pubkey,
+    pub vault_asset: Pubkey,
+    pub vault_token: Pubkey,
+    pub mint: Pubkey,
+    pub token_program: Pubkey,
+}
+
+/// Emitted after an exact permissionless deposit reaches vault custody.
+#[event]
+pub struct VaultDeposit {
+    pub vault: Pubkey,
+    pub vault_asset: Pubkey,
+    pub vault_token: Pubkey,
+    pub depositor: Pubkey,
+    pub source_token: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
+}
+
+/// Emitted after the authority withdraws an exact amount from vault custody.
+#[event]
+pub struct VaultWithdrawal {
+    pub vault: Pubkey,
+    pub vault_asset: Pubkey,
+    pub vault_token: Pubkey,
+    pub authority: Pubkey,
+    pub destination_token: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
+}

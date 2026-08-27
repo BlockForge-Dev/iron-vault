@@ -45,4 +45,24 @@ pub mod iron_vault {
     pub fn refund_escrow(ctx: Context<RefundEscrow>) -> Result<()> {
         instructions::refund_escrow::refund(ctx)
     }
+
+    /// Creates a stable vault namespace controlled by one authority.
+    pub fn create_vault(ctx: Context<CreateVault>, vault_id: u64, guardian: Pubkey) -> Result<()> {
+        instructions::create_vault::create_vault_account(ctx, vault_id, guardian)
+    }
+
+    /// Registers a classic SPL mint and its canonical vault custody account.
+    pub fn register_asset(ctx: Context<RegisterAsset>) -> Result<()> {
+        instructions::register_asset::register_vault_asset(ctx)
+    }
+
+    /// Deposits an exact positive amount into a registered vault asset.
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+        instructions::deposit::deposit_tokens(ctx, amount)
+    }
+
+    /// Withdraws an exact amount under the stored vault authority's signature.
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        instructions::withdraw::withdraw_tokens(ctx, amount)
+    }
 }

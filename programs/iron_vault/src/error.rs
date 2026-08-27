@@ -57,4 +57,40 @@ pub enum IronVaultError {
     /// The maker destination balance did not increase by the exact escrow amount.
     #[msg("Maker destination balance changed unexpectedly")]
     InvalidMakerDestinationBalance,
+    /// The vault guardian must be non-default and distinct from its authority.
+    #[msg("Vault guardian is invalid")]
+    InvalidVaultGuardian,
+    /// Only the vault's stored authority may perform this core operation.
+    #[msg("Caller is not the vault authority")]
+    InvalidVaultAuthority,
+    /// The supplied asset is not enabled for vault operations.
+    #[msg("Vault asset is disabled")]
+    VaultAssetDisabled,
+    /// Vault transfers must contain at least one base unit.
+    #[msg("Vault transfer amount must be greater than zero")]
+    InvalidVaultAmount,
+    /// The depositor does not own the supplied source token account.
+    #[msg("Depositor does not own the source token account")]
+    InvalidDepositSourceOwner,
+    /// A deposit source must use the registered asset mint.
+    #[msg("Deposit source mint does not match the vault asset")]
+    InvalidDepositSourceMint,
+    /// A withdrawal destination must use the registered asset mint.
+    #[msg("Withdrawal destination mint does not match the vault asset")]
+    InvalidWithdrawalDestinationMint,
+    /// Vault custody cannot fund the requested withdrawal.
+    #[msg("Vault custody has insufficient funds")]
+    InsufficientVaultFunds,
+    /// The vault custody balance changed by an unexpected amount.
+    #[msg("Vault custody balance changed unexpectedly")]
+    InvalidVaultCustodyBalance,
+    /// The inbound source balance changed by an unexpected amount.
+    #[msg("Deposit source balance changed unexpectedly")]
+    InvalidDepositSourceBalance,
+    /// The withdrawal destination balance changed by an unexpected amount.
+    #[msg("Withdrawal destination balance changed unexpectedly")]
+    InvalidWithdrawalDestinationBalance,
+    /// Paused vaults reject outflows.
+    #[msg("Vault is paused")]
+    VaultPaused,
 }
