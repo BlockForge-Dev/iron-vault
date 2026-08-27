@@ -72,6 +72,26 @@ impl VaultAsset {
     pub const SPACE: usize = 8 + Self::INIT_SPACE;
 }
 
+/// Exact, replaceable permission mask for one principal in one vault.
+#[account]
+#[derive(Debug, InitSpace)]
+pub struct RoleAssignment {
+    pub vault: Pubkey,
+    pub principal: Pubkey,
+    pub permissions: u64,
+    pub active: bool,
+    pub bump: u8,
+    pub reserved: [u8; 54],
+}
+
+impl RoleAssignment {
+    pub const SPACE: usize = 8 + Self::INIT_SPACE;
+
+    pub fn has(&self, permission: u64) -> bool {
+        self.active && self.permissions & permission == permission
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,5 +108,7 @@ mod tests {
         assert_eq!(Vault::SPACE, 168);
         assert_eq!(VaultAsset::INIT_SPACE, 192);
         assert_eq!(VaultAsset::SPACE, 200);
+        assert_eq!(RoleAssignment::INIT_SPACE, 128);
+        assert_eq!(RoleAssignment::SPACE, 136);
     }
 }

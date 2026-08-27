@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { IRON_VAULT_PROGRAM_ID, PDA_SEEDS } from "../dist/index.js";
+import {
+  IRON_VAULT_PROGRAM_ID,
+  PDA_SEEDS,
+  VAULT_PERMISSIONS,
+} from "../dist/index.js";
 
 test("exports the canonical program address", () => {
   assert.equal(
@@ -21,4 +25,8 @@ test("exports every specified PDA namespace", () => {
     "withdrawal",
   ]);
   assert.ok(Object.isFrozen(PDA_SEEDS));
+});
+test("exports the exact reserved vault permission bits", () => {
+  assert.deepEqual(Object.values(VAULT_PERMISSIONS), [1n, 2n, 4n, 8n, 16n, 32n]);
+  assert.ok(Object.isFrozen(VAULT_PERMISSIONS));
 });

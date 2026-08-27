@@ -65,4 +65,14 @@ pub mod iron_vault {
     pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         instructions::withdraw::withdraw_tokens(ctx, amount)
     }
+
+    /// Creates, replaces, or reactivates an exact role permission mask.
+    pub fn grant_role(ctx: Context<GrantRole>, principal: Pubkey, permissions: u64) -> Result<()> {
+        instructions::grant_role::grant(ctx, principal, permissions)
+    }
+
+    /// Immediately clears and deactivates a role assignment.
+    pub fn revoke_role(ctx: Context<RevokeRole>, principal: Pubkey) -> Result<()> {
+        instructions::revoke_role::revoke(ctx, principal)
+    }
 }

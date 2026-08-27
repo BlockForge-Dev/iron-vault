@@ -76,8 +76,24 @@ pub struct VaultWithdrawal {
     pub vault: Pubkey,
     pub vault_asset: Pubkey,
     pub vault_token: Pubkey,
-    pub authority: Pubkey,
+    pub caller: Pubkey,
     pub destination_token: Pubkey,
     pub mint: Pubkey,
     pub amount: u64,
+}
+
+/// Emitted when the vault authority creates or replaces an exact role mask.
+#[event]
+pub struct RoleGranted {
+    pub vault: Pubkey,
+    pub principal: Pubkey,
+    pub permissions: u64,
+}
+
+/// Emitted when the vault authority immediately deactivates a role.
+#[event]
+pub struct RoleRevoked {
+    pub vault: Pubkey,
+    pub principal: Pubkey,
+    pub previous_permissions: u64,
 }

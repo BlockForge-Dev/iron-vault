@@ -15,3 +15,15 @@ export const PDA_SEEDS = Object.freeze({
 } as const);
 
 export type PdaSeedName = keyof typeof PDA_SEEDS;
+
+/** Exact on-chain Vault role bits. Unknown bits are rejected by the program. */
+export const VAULT_PERMISSIONS = Object.freeze({
+  withdraw: 1n << 0n,
+  requestWithdrawal: 1n << 1n,
+  cancelWithdrawal: 1n << 2n,
+  manageAssets: 1n << 3n,
+  manageLimits: 1n << 4n,
+  manageRoles: 1n << 5n,
+} as const);
+
+export type VaultPermissionName = keyof typeof VAULT_PERMISSIONS;

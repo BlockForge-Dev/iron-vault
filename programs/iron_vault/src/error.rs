@@ -93,4 +93,19 @@ pub enum IronVaultError {
     /// Paused vaults reject outflows.
     #[msg("Vault is paused")]
     VaultPaused,
+    /// Role principals must be non-default and distinct from intrinsic vault actors.
+    #[msg("Role principal is invalid")]
+    InvalidRolePrincipal,
+    /// A role must contain only known bits and grant at least one capability.
+    #[msg("Role permission mask is invalid")]
+    InvalidPermissionMask,
+    /// The supplied role is inactive or does not grant the required capability.
+    #[msg("Caller lacks the required vault permission")]
+    MissingVaultPermission,
+    /// Only active roles can be revoked.
+    #[msg("Role is not active")]
+    RoleNotActive,
+    /// Withdrawal accepts no extra accounts for authorities and exactly one role for operators.
+    #[msg("Unexpected withdrawal accounts")]
+    UnexpectedWithdrawalAccounts,
 }

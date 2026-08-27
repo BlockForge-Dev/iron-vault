@@ -1,7 +1,9 @@
 use {
     anchor_lang::{
         prelude::Pubkey,
-        solana_program::{program_option::COption, program_pack::Pack, system_program},
+        solana_program::{
+            instruction::AccountMeta, program_option::COption, program_pack::Pack, system_program,
+        },
         AccountDeserialize, InstructionData, ToAccountMetas,
     },
     anchor_spl::token::spl_token::{
@@ -9,7 +11,8 @@ use {
         state::{Account as SplTokenAccount, AccountState, Mint as SplMint},
     },
     iron_vault::{
-        state::{Vault, VaultAsset},
+        constants::{PERMISSION_REQUEST_WITHDRAWAL, PERMISSION_WITHDRAW},
+        state::{RoleAssignment, Vault, VaultAsset},
         ID,
     },
     litesvm::{types::TransactionResult, LiteSVM},
@@ -142,6 +145,10 @@ fn asset_addresses(vault: Pubkey, mint: Pubkey) -> (Pubkey, Pubkey) {
     (vault_asset, vault_token)
 }
 
+fn role_address(vault: Pubkey, principal: Pubkey) -> Pubkey {
+    Pubkey::find_program_address(&[b"role", vault.as_ref(), principal.as_ref()], &ID).0
+}
+
 fn create_vault_instruction(
     authority: Pubkey,
     vault_id: u64,
@@ -215,19 +222,87 @@ fn withdraw_instruction(
     destination_token: Pubkey,
     amount: u64,
 ) -> anchor_lang::solana_program::instruction::Instruction {
+    withdraw_instruction_with_role(
+        fixture,
+        vault_id,
+        authority,
+        destination_token,
+        amount,
+        None,
+    )
+}
+
+fn withdraw_instruction_with_role(
+    fixture: &Fixture,
+    vault_id: u64,
+    caller: Pubkey,
+    destination_token: Pubkey,
+    amount: u64,
+    role_assignment: Option<Pubkey>,
+) -> anchor_lang::solana_program::instruction::Instruction {
     let vault = vault_address(fixture.authority.pubkey(), vault_id);
     let (vault_asset, vault_token) = asset_addresses(vault, fixture.mint);
-    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+    let mut instruction = anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
         ID,
         &iron_vault::instruction::Withdraw { amount }.data(),
         iron_vault::accounts::Withdraw {
-            authority,
+            caller,
             vault,
             mint: fixture.mint,
             vault_asset,
             vault_token,
             destination_token,
             token_program: spl_token::ID,
+        }
+        .to_account_metas(None),
+    );
+    if let Some(role_assignment) = role_assignment {
+        instruction
+            .accounts
+            .push(AccountMeta::new_readonly(role_assignment, false));
+    }
+    instruction
+}
+
+fn grant_role_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    principal: Pubkey,
+    permissions: u64,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    let vault = vault_address(fixture.authority.pubkey(), vault_id);
+    let role_assignment = role_address(vault, principal);
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::GrantRole {
+            principal,
+            permissions,
+        }
+        .data(),
+        iron_vault::accounts::GrantRole {
+            authority: fixture.authority.pubkey(),
+            vault,
+            role_assignment,
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn revoke_role_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    principal: Pubkey,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    let vault = vault_address(fixture.authority.pubkey(), vault_id);
+    let role_assignment = role_address(vault, principal);
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::RevokeRole { principal }.data(),
+        iron_vault::accounts::RevokeRole {
+            authority: fixture.authority.pubkey(),
+            vault,
+            role_assignment,
         }
         .to_account_metas(None),
     )
@@ -262,6 +337,11 @@ fn vault_state(svm: &LiteSVM, address: Pubkey) -> Vault {
 fn asset_state(svm: &LiteSVM, address: Pubkey) -> VaultAsset {
     let account = svm.get_account(&address).unwrap();
     VaultAsset::try_deserialize(&mut account.data.as_slice()).unwrap()
+}
+
+fn role_state(svm: &LiteSVM, address: Pubkey) -> RoleAssignment {
+    let account = svm.get_account(&address).unwrap();
+    RoleAssignment::try_deserialize(&mut account.data.as_slice()).unwrap()
 }
 
 fn assert_error_message(result: TransactionResult, expected: &str) {
@@ -553,13 +633,13 @@ fn guardian_cannot_withdraw() {
     );
     let result = send(&mut fixture.svm, &fixture.guardian, instruction);
 
-    assert_error_message(result, "Caller is not the vault authority");
+    assert_error_message(result, "Caller lacks the required vault permission");
     assert_eq!(token_balance(&fixture.svm, vault_token), amount);
     assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
 }
 
 #[test]
-fn random_wallet_cannot_withdraw() {
+fn random_user_rejected() {
     let vault_id = 14;
     let amount = 100_000;
     let (mut fixture, _, _, vault_token) = funded_fixture(vault_id, amount);
@@ -572,7 +652,7 @@ fn random_wallet_cannot_withdraw() {
     );
     let result = send(&mut fixture.svm, &fixture.attacker, instruction);
 
-    assert_error_message(result, "Caller is not the vault authority");
+    assert_error_message(result, "Caller lacks the required vault permission");
     assert_eq!(token_balance(&fixture.svm, vault_token), amount);
     assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
 }
@@ -678,5 +758,223 @@ fn cross_vault_asset_substitution_rejected() {
 
     assert!(result.is_err());
     assert_eq!(token_balance(&fixture.svm, first_vault_token), amount);
+    assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
+}
+
+#[test]
+fn authority_can_manage_roles() {
+    let vault_id = 20;
+    let (mut fixture, vault, _, _) = registered_fixture(vault_id);
+    let principal = fixture.attacker.pubkey();
+    let role = role_address(vault, principal);
+    let initial_permissions = PERMISSION_WITHDRAW | PERMISSION_REQUEST_WITHDRAWAL;
+    let grant = grant_role_instruction(&fixture, vault_id, principal, initial_permissions);
+    let metadata = send(&mut fixture.svm, &fixture.authority, grant).unwrap();
+
+    assert!(metadata
+        .logs
+        .iter()
+        .any(|line| line.contains("Program data:")));
+    let state = role_state(&fixture.svm, role);
+    assert_eq!(state.vault, vault);
+    assert_eq!(state.principal, principal);
+    assert_eq!(state.permissions, initial_permissions);
+    assert!(state.active);
+
+    let replacement =
+        grant_role_instruction(&fixture, vault_id, principal, PERMISSION_REQUEST_WITHDRAWAL);
+    send(&mut fixture.svm, &fixture.authority, replacement).unwrap();
+    let state = role_state(&fixture.svm, role);
+    assert_eq!(state.permissions, PERMISSION_REQUEST_WITHDRAWAL);
+    assert!(state.active);
+}
+
+#[test]
+fn operator_can_withdraw_when_authorized() {
+    let vault_id = 21;
+    let amount = 100_000;
+    let (mut fixture, vault, _, vault_token) = funded_fixture(vault_id, amount);
+    let operator = fixture.attacker.pubkey();
+    let role = role_address(vault, operator);
+    let grant = grant_role_instruction(&fixture, vault_id, operator, PERMISSION_WITHDRAW);
+    send(&mut fixture.svm, &fixture.authority, grant).unwrap();
+
+    let withdrawal = withdraw_instruction_with_role(
+        &fixture,
+        vault_id,
+        operator,
+        fixture.destination_token,
+        amount,
+        Some(role),
+    );
+    send(&mut fixture.svm, &fixture.attacker, withdrawal).unwrap();
+
+    assert_eq!(token_balance(&fixture.svm, vault_token), 0);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.destination_token),
+        amount
+    );
+}
+
+#[test]
+fn operator_without_permission_rejected() {
+    let vault_id = 22;
+    let amount = 100_000;
+    let (mut fixture, vault, _, vault_token) = funded_fixture(vault_id, amount);
+    let operator = fixture.attacker.pubkey();
+    let role = role_address(vault, operator);
+    let grant = grant_role_instruction(&fixture, vault_id, operator, PERMISSION_REQUEST_WITHDRAWAL);
+    send(&mut fixture.svm, &fixture.authority, grant).unwrap();
+
+    let withdrawal = withdraw_instruction_with_role(
+        &fixture,
+        vault_id,
+        operator,
+        fixture.destination_token,
+        amount,
+        Some(role),
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, withdrawal);
+
+    assert_error_message(result, "Caller lacks the required vault permission");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount);
+    assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
+}
+
+#[test]
+fn revoked_operator_immediately_rejected() {
+    let vault_id = 23;
+    let amount = 100_000;
+    let (mut fixture, vault, _, vault_token) = funded_fixture(vault_id, amount);
+    let operator = fixture.attacker.pubkey();
+    let role = role_address(vault, operator);
+    let grant = grant_role_instruction(&fixture, vault_id, operator, PERMISSION_WITHDRAW);
+    send(&mut fixture.svm, &fixture.authority, grant).unwrap();
+    let revoke = revoke_role_instruction(&fixture, vault_id, operator);
+    send(&mut fixture.svm, &fixture.authority, revoke).unwrap();
+    let state = role_state(&fixture.svm, role);
+    assert!(!state.active);
+    assert_eq!(state.permissions, 0);
+
+    let withdrawal = withdraw_instruction_with_role(
+        &fixture,
+        vault_id,
+        operator,
+        fixture.destination_token,
+        amount,
+        Some(role),
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, withdrawal);
+
+    assert_error_message(result, "Caller lacks the required vault permission");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount);
+    assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
+}
+
+#[test]
+fn role_for_other_vault_cannot_be_reused() {
+    let first_vault_id = 24;
+    let second_vault_id = 25;
+    let amount = 100_000;
+    let (mut fixture, first_vault, _, first_vault_token) = funded_fixture(first_vault_id, amount);
+    let operator = fixture.attacker.pubkey();
+    let first_role = role_address(first_vault, operator);
+    let grant = grant_role_instruction(&fixture, first_vault_id, operator, PERMISSION_WITHDRAW);
+    send(&mut fixture.svm, &fixture.authority, grant).unwrap();
+
+    let create_second = create_vault_instruction(
+        fixture.authority.pubkey(),
+        second_vault_id,
+        fixture.guardian.pubkey(),
+    );
+    send(&mut fixture.svm, &fixture.authority, create_second).unwrap();
+    let register_second =
+        register_asset_instruction(&fixture, fixture.authority.pubkey(), second_vault_id);
+    send(&mut fixture.svm, &fixture.authority, register_second).unwrap();
+    let second_vault = vault_address(fixture.authority.pubkey(), second_vault_id);
+    let (_, second_vault_token) = asset_addresses(second_vault, fixture.mint);
+    let deposit_second = deposit_instruction(
+        &fixture,
+        second_vault_id,
+        fixture.depositor.pubkey(),
+        fixture.depositor_token,
+        amount,
+    );
+    send(&mut fixture.svm, &fixture.depositor, deposit_second).unwrap();
+
+    let withdrawal = withdraw_instruction_with_role(
+        &fixture,
+        second_vault_id,
+        operator,
+        fixture.destination_token,
+        amount,
+        Some(first_role),
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, withdrawal);
+
+    assert!(result.is_err());
+    assert_eq!(token_balance(&fixture.svm, first_vault_token), amount);
+    assert_eq!(token_balance(&fixture.svm, second_vault_token), amount);
+    assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
+}
+
+#[test]
+fn invalid_role_grants_rejected() {
+    for (vault_id, permissions) in [(26, 0), (27, 1_u64 << 63)] {
+        let (mut fixture, vault, _, _) = registered_fixture(vault_id);
+        let principal = fixture.attacker.pubkey();
+        let role = role_address(vault, principal);
+        let grant = grant_role_instruction(&fixture, vault_id, principal, permissions);
+        let result = send(&mut fixture.svm, &fixture.authority, grant);
+        assert_error_message(result, "Role permission mask is invalid");
+        assert!(fixture.svm.get_account(&role).is_none());
+    }
+
+    for (vault_id, principal_kind) in [(28, 0), (29, 1), (30, 2)] {
+        let (mut fixture, vault, _, _) = registered_fixture(vault_id);
+        let principal = match principal_kind {
+            0 => Pubkey::default(),
+            1 => fixture.authority.pubkey(),
+            _ => fixture.guardian.pubkey(),
+        };
+        let role = role_address(vault, principal);
+        let grant = grant_role_instruction(&fixture, vault_id, principal, PERMISSION_WITHDRAW);
+        let result = send(&mut fixture.svm, &fixture.authority, grant);
+        assert_error_message(result, "Role principal is invalid");
+        assert!(fixture.svm.get_account(&role).is_none());
+    }
+}
+
+#[test]
+fn non_authority_cannot_manage_roles() {
+    let vault_id = 31;
+    let (mut fixture, vault, _, _) = registered_fixture(vault_id);
+    let principal = fixture.depositor.pubkey();
+    let role = role_address(vault, principal);
+    let mut grant = grant_role_instruction(&fixture, vault_id, principal, PERMISSION_WITHDRAW);
+    grant.accounts[0].pubkey = fixture.attacker.pubkey();
+    let result = send(&mut fixture.svm, &fixture.attacker, grant);
+
+    assert_error_message(result, "Caller is not the vault authority");
+    assert!(fixture.svm.get_account(&role).is_none());
+}
+
+#[test]
+fn authority_withdraw_rejects_unexpected_accounts() {
+    let vault_id = 32;
+    let amount = 100_000;
+    let (mut fixture, _, _, vault_token) = funded_fixture(vault_id, amount);
+    let withdrawal = withdraw_instruction_with_role(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        amount,
+        Some(system_program::ID),
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, withdrawal);
+
+    assert_error_message(result, "Unexpected withdrawal accounts");
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount);
     assert_eq!(token_balance(&fixture.svm, fixture.destination_token), 0);
 }

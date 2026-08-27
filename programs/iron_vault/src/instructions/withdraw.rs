@@ -1,9 +1,11 @@
 use {
     crate::{
-        constants::{VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED},
+        constants::{
+            PERMISSION_WITHDRAW, ROLE_SEED, VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED,
+        },
         error::IronVaultError,
         events::VaultWithdrawal,
-        state::{Vault, VaultAsset},
+        state::{RoleAssignment, Vault, VaultAsset},
     },
     anchor_lang::prelude::*,
     anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
@@ -11,7 +13,7 @@ use {
 
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
-    pub authority: Signer<'info>,
+    pub caller: Signer<'info>,
     #[account(
         seeds = [
             VAULT_SEED,
@@ -19,7 +21,6 @@ pub struct Withdraw<'info> {
             vault.vault_id.to_le_bytes().as_ref(),
         ],
         bump = vault.bump,
-        constraint = vault.authority == authority.key() @ IronVaultError::InvalidVaultAuthority,
     )]
     pub vault: Account<'info, Vault>,
     pub mint: Account<'info, Mint>,
@@ -48,6 +49,27 @@ pub struct Withdraw<'info> {
 }
 
 pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+    if ctx.accounts.caller.key() == ctx.accounts.vault.authority {
+        require!(
+            ctx.remaining_accounts.is_empty(),
+            IronVaultError::UnexpectedWithdrawalAccounts
+        );
+    } else {
+        require!(
+            ctx.remaining_accounts.len() <= 1,
+            IronVaultError::UnexpectedWithdrawalAccounts
+        );
+        require_eq!(
+            ctx.remaining_accounts.len(),
+            1,
+            IronVaultError::MissingVaultPermission
+        );
+        validate_withdraw_role(
+            &ctx.remaining_accounts[0],
+            &ctx.accounts.vault,
+            ctx.accounts.caller.key(),
+        )?;
+    }
     require_gt!(amount, 0, IronVaultError::InvalidVaultAmount);
     require!(!ctx.accounts.vault.paused, IronVaultError::VaultPaused);
     require!(
@@ -107,11 +129,52 @@ pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
         vault: ctx.accounts.vault.key(),
         vault_asset: ctx.accounts.vault_asset.key(),
         vault_token: ctx.accounts.vault_token.key(),
-        authority: ctx.accounts.authority.key(),
+        caller: ctx.accounts.caller.key(),
         destination_token: ctx.accounts.destination_token.key(),
         mint: ctx.accounts.mint.key(),
         amount,
     });
+
+    Ok(())
+}
+
+fn validate_withdraw_role(
+    role_info: &AccountInfo<'_>,
+    vault: &Account<'_, Vault>,
+    caller: Pubkey,
+) -> Result<()> {
+    let (expected_role, _) = Pubkey::find_program_address(
+        &[ROLE_SEED, vault.key().as_ref(), caller.as_ref()],
+        &crate::ID,
+    );
+    require_keys_eq!(
+        *role_info.key,
+        expected_role,
+        IronVaultError::MissingVaultPermission
+    );
+    require_keys_eq!(
+        *role_info.owner,
+        crate::ID,
+        IronVaultError::MissingVaultPermission
+    );
+
+    let data = role_info.try_borrow_data()?;
+    let role = RoleAssignment::try_deserialize(&mut data.as_ref())
+        .map_err(|_| error!(IronVaultError::MissingVaultPermission))?;
+    require_keys_eq!(
+        role.vault,
+        vault.key(),
+        IronVaultError::MissingVaultPermission
+    );
+    require_keys_eq!(
+        role.principal,
+        caller,
+        IronVaultError::MissingVaultPermission
+    );
+    require!(
+        role.has(PERMISSION_WITHDRAW),
+        IronVaultError::MissingVaultPermission
+    );
 
     Ok(())
 }
