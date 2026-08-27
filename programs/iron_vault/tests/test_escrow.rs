@@ -1,7 +1,9 @@
 use {
     anchor_lang::{
         prelude::{Clock, Pubkey},
-        solana_program::{program_option::COption, program_pack::Pack, system_program},
+        solana_program::{
+            program_option::COption, program_pack::Pack, system_program, sysvar::SysvarId,
+        },
         AccountDeserialize, InstructionData, ToAccountMetas,
     },
     anchor_spl::token::spl_token::{
@@ -207,6 +209,35 @@ fn release_instruction(
         }
         .to_account_metas(None),
     )
+}
+
+fn refund_instruction(
+    fixture: &Fixture,
+    escrow_id: u64,
+    caller: Pubkey,
+    maker_destination: Pubkey,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    let (escrow, escrow_token) = escrow_addresses(fixture.maker.pubkey(), escrow_id);
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::RefundEscrow {}.data(),
+        iron_vault::accounts::RefundEscrow {
+            caller,
+            escrow,
+            mint: fixture.mint,
+            escrow_token,
+            maker_destination,
+            token_program: spl_token::ID,
+            clock: Clock::id(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn set_clock(svm: &mut LiteSVM, unix_timestamp: i64) {
+    let mut clock: Clock = svm.get_sysvar();
+    clock.unix_timestamp = unix_timestamp;
+    svm.set_sysvar(&clock);
 }
 
 fn send(
@@ -720,5 +751,273 @@ fn release_at_expiry_rejected() {
     assert_eq!(
         escrow_state(&fixture.svm, escrow).status,
         EscrowStatus::Funded
+    );
+}
+
+#[test]
+fn refund_before_expiry_fails() {
+    let escrow_id = 40;
+    let amount = 200_000;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(escrow_id, amount);
+    let maker_balance = token_balance(&fixture.svm, fixture.maker_token);
+    let refund = refund_instruction(
+        &fixture,
+        escrow_id,
+        fixture.attacker.pubkey(),
+        fixture.maker_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, refund);
+
+    assert_error_message(result, "Escrow has not expired");
+    assert_eq!(token_balance(&fixture.svm, escrow_token), amount);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.maker_token),
+        maker_balance
+    );
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Funded
+    );
+}
+
+#[test]
+fn refund_at_expiry_succeeds() {
+    let escrow_id = 41;
+    let amount = 200_000;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(escrow_id, amount);
+    let expires_at = escrow_state(&fixture.svm, escrow).expires_at;
+    set_clock(&mut fixture.svm, expires_at);
+    let refund = refund_instruction(
+        &fixture,
+        escrow_id,
+        fixture.maker.pubkey(),
+        fixture.maker_token,
+    );
+    let metadata = send(&mut fixture.svm, &fixture.maker, refund).unwrap();
+
+    assert!(metadata
+        .logs
+        .iter()
+        .any(|line| line.contains("Program data:")));
+    assert_eq!(token_balance(&fixture.svm, escrow_token), 0);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.maker_token),
+        INITIAL_MAKER_BALANCE
+    );
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Refunded
+    );
+}
+
+#[test]
+fn refund_after_expiry_succeeds() {
+    let escrow_id = 42;
+    let amount = 200_000;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(escrow_id, amount);
+    let expires_at = escrow_state(&fixture.svm, escrow).expires_at;
+    set_clock(&mut fixture.svm, expires_at + 1);
+    let refund = refund_instruction(
+        &fixture,
+        escrow_id,
+        fixture.maker.pubkey(),
+        fixture.maker_token,
+    );
+    send(&mut fixture.svm, &fixture.maker, refund).unwrap();
+
+    assert_eq!(token_balance(&fixture.svm, escrow_token), 0);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.maker_token),
+        INITIAL_MAKER_BALANCE
+    );
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Refunded
+    );
+}
+
+#[test]
+fn random_caller_can_trigger_refund() {
+    let escrow_id = 43;
+    let amount = 200_000;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(escrow_id, amount);
+    let expires_at = escrow_state(&fixture.svm, escrow).expires_at;
+    set_clock(&mut fixture.svm, expires_at);
+    let refund = refund_instruction(
+        &fixture,
+        escrow_id,
+        fixture.attacker.pubkey(),
+        fixture.maker_token,
+    );
+    send(&mut fixture.svm, &fixture.attacker, refund).unwrap();
+
+    assert_eq!(token_balance(&fixture.svm, escrow_token), 0);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.maker_token),
+        INITIAL_MAKER_BALANCE
+    );
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Refunded
+    );
+}
+
+#[test]
+fn random_caller_cannot_redirect_refund() {
+    let escrow_id = 44;
+    let amount = 200_000;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(escrow_id, amount);
+    let expires_at = escrow_state(&fixture.svm, escrow).expires_at;
+    set_clock(&mut fixture.svm, expires_at);
+    let attacker_token = Pubkey::new_unique();
+    set_token_account(
+        &mut fixture.svm,
+        attacker_token,
+        fixture.mint,
+        fixture.attacker.pubkey(),
+        0,
+    );
+    let refund = refund_instruction(
+        &fixture,
+        escrow_id,
+        fixture.attacker.pubkey(),
+        attacker_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, refund);
+
+    assert_error_message(
+        result,
+        "Refund destination is not owned by the escrow maker",
+    );
+    assert_eq!(token_balance(&fixture.svm, escrow_token), amount);
+    assert_eq!(token_balance(&fixture.svm, attacker_token), 0);
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Funded
+    );
+}
+
+#[test]
+fn refund_wrong_destination_mint_rejected() {
+    let escrow_id = 48;
+    let amount = 200_000;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(escrow_id, amount);
+    let expires_at = escrow_state(&fixture.svm, escrow).expires_at;
+    set_clock(&mut fixture.svm, expires_at);
+    let wrong_mint = Pubkey::new_unique();
+    let wrong_token = Pubkey::new_unique();
+    set_mint(&mut fixture.svm, wrong_mint, fixture.maker.pubkey(), 0);
+    set_token_account(
+        &mut fixture.svm,
+        wrong_token,
+        wrong_mint,
+        fixture.maker.pubkey(),
+        0,
+    );
+    let refund = refund_instruction(&fixture, escrow_id, fixture.attacker.pubkey(), wrong_token);
+    let result = send(&mut fixture.svm, &fixture.attacker, refund);
+
+    assert_error_message(result, "Refund destination mint does not match");
+    assert_eq!(token_balance(&fixture.svm, escrow_token), amount);
+    assert_eq!(token_balance(&fixture.svm, wrong_token), 0);
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Funded
+    );
+}
+
+#[test]
+fn released_escrow_cannot_refund() {
+    let escrow_id = 45;
+    let amount = 200_000;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(escrow_id, amount);
+    let expires_at = escrow_state(&fixture.svm, escrow).expires_at;
+    let release = release_instruction(
+        &fixture,
+        escrow_id,
+        fixture.maker.pubkey(),
+        fixture.recipient_token,
+    );
+    send(&mut fixture.svm, &fixture.maker, release).unwrap();
+    set_clock(&mut fixture.svm, expires_at);
+    let refund = refund_instruction(
+        &fixture,
+        escrow_id,
+        fixture.attacker.pubkey(),
+        fixture.maker_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, refund);
+
+    assert_error_message(result, "Escrow is not funded");
+    assert_eq!(token_balance(&fixture.svm, escrow_token), 0);
+    assert_eq!(token_balance(&fixture.svm, fixture.recipient_token), amount);
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Released
+    );
+}
+
+#[test]
+fn refunded_escrow_cannot_release() {
+    let escrow_id = 46;
+    let amount = 200_000;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(escrow_id, amount);
+    let expires_at = escrow_state(&fixture.svm, escrow).expires_at;
+    set_clock(&mut fixture.svm, expires_at);
+    let refund = refund_instruction(
+        &fixture,
+        escrow_id,
+        fixture.attacker.pubkey(),
+        fixture.maker_token,
+    );
+    send(&mut fixture.svm, &fixture.attacker, refund).unwrap();
+    let release = release_instruction(
+        &fixture,
+        escrow_id,
+        fixture.maker.pubkey(),
+        fixture.recipient_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.maker, release);
+
+    assert_error_message(result, "Escrow is not funded");
+    assert_eq!(token_balance(&fixture.svm, escrow_token), 0);
+    assert_eq!(token_balance(&fixture.svm, fixture.recipient_token), 0);
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Refunded
+    );
+}
+
+#[test]
+fn refund_cannot_execute_twice() {
+    let escrow_id = 47;
+    let amount = 200_000;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(escrow_id, amount);
+    let expires_at = escrow_state(&fixture.svm, escrow).expires_at;
+    set_clock(&mut fixture.svm, expires_at);
+    let refund = refund_instruction(
+        &fixture,
+        escrow_id,
+        fixture.attacker.pubkey(),
+        fixture.maker_token,
+    );
+    send(&mut fixture.svm, &fixture.attacker, refund).unwrap();
+    let second_refund = refund_instruction(
+        &fixture,
+        escrow_id,
+        fixture.attacker.pubkey(),
+        fixture.maker_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, second_refund);
+
+    assert_error_message(result, "Escrow is not funded");
+    assert_eq!(token_balance(&fixture.svm, escrow_token), 0);
+    assert_eq!(
+        token_balance(&fixture.svm, fixture.maker_token),
+        INITIAL_MAKER_BALANCE
+    );
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Refunded
     );
 }

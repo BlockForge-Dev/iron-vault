@@ -36,6 +36,9 @@ pub enum IronVaultError {
     /// A maker release must occur strictly before expiry.
     #[msg("Escrow has expired")]
     EscrowExpired,
+    /// Refunds become available at, but not before, the escrow expiry.
+    #[msg("Escrow has not expired")]
+    EscrowNotExpired,
     /// The release token account must be owned by the immutable recipient.
     #[msg("Release destination is not owned by the escrow recipient")]
     InvalidRecipientOwner,
@@ -45,4 +48,13 @@ pub enum IronVaultError {
     /// The destination balance did not increase by the exact escrow amount.
     #[msg("Recipient token balance changed unexpectedly")]
     InvalidRecipientBalance,
+    /// A refund destination must be controlled by the immutable maker.
+    #[msg("Refund destination is not owned by the escrow maker")]
+    InvalidMakerDestinationOwner,
+    /// A refund destination must use the immutable escrow mint.
+    #[msg("Refund destination mint does not match")]
+    InvalidMakerDestinationMint,
+    /// The maker destination balance did not increase by the exact escrow amount.
+    #[msg("Maker destination balance changed unexpectedly")]
+    InvalidMakerDestinationBalance,
 }

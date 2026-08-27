@@ -5,7 +5,7 @@ policy-controlled token vaults on Solana. The intended implementation language
 is Rust using Anchor.
 
 The repository contains the Milestone 0 specification, reproducible Milestone 1
-toolchain, and Milestone 2 classic SPL Token escrow implementation:
+toolchain, and IronVault v0.1 classic SPL Token escrow lifecycle:
 
 - [Protocol specification](docs/PROTOCOL_SPEC.md)
 - [Account and PDA model](docs/ACCOUNT_MODEL.md)
@@ -28,8 +28,10 @@ decision record.
 
 ## Security status
 
-Milestone 2 implements only fixed-destination `create_escrow` and
-maker-authorized `release_escrow` for the classic SPL Token program. Refunds,
-protocol pause controls, Token-2022, policy vaults, and multisig governance are
+IronVault v0.1 implements fixed-destination `create_escrow`, maker-authorized
+`release_escrow` before expiry, and permissionless `refund_escrow` at or after
+expiry for the classic SPL Token program. Refund destinations are constrained
+to an account owned by the immutable maker and using the immutable escrow mint.
+Protocol pause controls, Token-2022, policy vaults, and multisig governance are
 not implemented. The code has not been deployed or independently audited and
 MUST NOT be represented as safe for arbitrary third-party mainnet funds.

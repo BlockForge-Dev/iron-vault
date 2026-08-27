@@ -25,3 +25,15 @@ pub struct EscrowReleased {
     pub mint: Pubkey,
     pub amount: u64,
 }
+
+/// Emitted after an expired escrow is returned to its immutable maker.
+#[event]
+pub struct EscrowRefunded {
+    pub escrow: Pubkey,
+    pub escrow_token: Pubkey,
+    pub caller: Pubkey,
+    pub maker: Pubkey,
+    pub maker_destination: Pubkey,
+    pub mint: Pubkey,
+    pub amount: u64,
+}

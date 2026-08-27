@@ -38,4 +38,11 @@ pub mod iron_vault {
     pub fn release_escrow(ctx: Context<ReleaseEscrow>) -> Result<()> {
         instructions::release_escrow::release(ctx)
     }
+
+    /// Returns a funded escrow to its maker at or after expiry.
+    ///
+    /// Any signer may trigger the refund, but cannot redirect its destination.
+    pub fn refund_escrow(ctx: Context<RefundEscrow>) -> Result<()> {
+        instructions::refund_escrow::refund(ctx)
+    }
 }
