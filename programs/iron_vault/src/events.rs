@@ -78,7 +78,7 @@ pub struct VaultPauseUpdated {
     pub paused: bool,
 }
 
-/// Emitted when a classic SPL mint is registered with a vault.
+/// Emitted when a supported mint is registered with a vault.
 #[event]
 pub struct VaultAssetRegistered {
     pub vault: Pubkey,

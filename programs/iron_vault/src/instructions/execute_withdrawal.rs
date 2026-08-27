@@ -7,24 +7,30 @@ use {
         error::IronVaultError,
         events::WithdrawalExecuted,
         instructions::withdraw::next_window_state,
-        security::pause::require_protocol_active,
+        security::{pause::require_protocol_active, token_policy::mint_extensions_supported},
         state::{ProtocolConfig, Vault, VaultAsset, WithdrawalRequest, WithdrawalStatus},
     },
     anchor_lang::prelude::*,
-    anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
+    anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 #[derive(Accounts)]
 pub struct ExecuteWithdrawal<'info> {
     pub caller: Signer<'info>,
     #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
-    pub protocol_config: Account<'info, ProtocolConfig>,
+    pub protocol_config: Box<Account<'info, ProtocolConfig>>,
     #[account(
         seeds = [VAULT_SEED, vault.namespace_authority.as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
     )]
     pub vault: Box<Account<'info, Vault>>,
-    pub mint: Account<'info, Mint>,
+    #[account(
+        constraint = mint.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
+        constraint = mint_extensions_supported(&mint.to_account_info())?
+            @ IronVaultError::UnsupportedTokenExtension,
+    )]
+    pub mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(
         mut,
         seeds = [VAULT_ASSET_SEED, vault.key().as_ref(), mint.key().as_ref()],
@@ -50,16 +56,20 @@ pub struct ExecuteWithdrawal<'info> {
         bump,
         constraint = vault_token.owner == vault.key() @ IronVaultError::InvalidVaultCustodyBalance,
         constraint = vault_token.mint == mint.key() @ IronVaultError::InvalidWithdrawalMint,
+        constraint = vault_token.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
     )]
-    pub vault_token: Account<'info, TokenAccount>,
+    pub vault_token: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         mut,
         address = withdrawal_request.recipient_token_account @ IronVaultError::InvalidWithdrawalRecipient,
         constraint = recipient_token.owner == withdrawal_request.recipient_owner @ IronVaultError::InvalidWithdrawalRecipient,
         constraint = recipient_token.mint == withdrawal_request.mint @ IronVaultError::InvalidWithdrawalMint,
+        constraint = recipient_token.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
     )]
-    pub recipient_token: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub recipient_token: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub clock: Sysvar<'info, Clock>,
 }
 
@@ -113,7 +123,7 @@ pub fn execute(ctx: Context<ExecuteWithdrawal>) -> Result<()> {
         &bump,
     ];
 
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.key(),
             TransferChecked {

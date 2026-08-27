@@ -13,13 +13,13 @@
 | pnpm | 11.23.0 | `packageManager`, `.tool-versions`, CI |
 | LiteSVM | 0.13.1 exact | program dev dependencies |
 
-`anchor-spl` has default features disabled. Milestone 2 uses only the classic
-SPL Token CPI surface and every escrow instruction requires `Program<Token>`, so
-Token-2022 program and account inputs are rejected. Anchor 1.1.2's account-init
-derive references shared Token-2022 interface helpers at compile time, which is
-why that Cargo feature is enabled; it does not widen the accepted runtime token
-program. The SDK has no runtime dependency yet; an Anchor client will be added
-with the first transaction builder that exercises it.
+`anchor-spl` has default features disabled and enables only `token` and
+`token_2022`. Token-bearing instructions use `InterfaceAccount<Mint>`,
+`InterfaceAccount<TokenAccount>`, and `Interface<TokenInterface>`. Each mint and
+token account is additionally bound to the selected or stored token-program ID.
+The v1 parser accepts legacy SPL Token and Token-2022 mints with an empty TLV
+extension list. Every initialized Token-2022 mint extension is rejected before
+funding or registration. See `docs/TOKEN_2022_POLICY.md`.
 
 LiteSVM 0.13.1 is the patch line paired with the Anchor 1.1 template and Solana
 3.1 client crates. Newer LiteSVM releases track newer Agave internals and require

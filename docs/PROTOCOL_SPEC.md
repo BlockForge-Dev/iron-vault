@@ -65,8 +65,9 @@ rejected. The program makes no price or decimal-normalized comparisons.
   data.
 - **G6 — Token semantics allowlist:** Unsupported mint/account extensions MUST be
   rejected before deposits or escrow funding. Original SPL Token is permitted.
-  Token-2022 is denied in v1 until an extension parser and explicit allowlist are
-  implemented and tested.
+  Token-2022 is permitted only when its initialized mint-extension list is
+  empty. Every extension is denied by default until explicitly reviewed,
+  implemented, specified, and tested.
 - **G7 — Upgrade separation:** Operational protocol/vault keys MUST NOT be the
   deployed program's upgrade authority. This is an operational invariant that
   cannot be enforced by the program itself.

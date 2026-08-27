@@ -175,4 +175,10 @@ pub enum IronVaultError {
     UnexpectedRequestAccounts,
     #[msg("Unexpected withdrawal-cancellation authorization accounts")]
     UnexpectedCancellationAccounts,
+    /// Mint and token accounts must be owned by the selected token program.
+    #[msg("Token account or mint is not owned by the selected token program")]
+    InvalidTokenProgram,
+    /// V1 supports only extension-free Token-2022 mints.
+    #[msg("Token-2022 mint extensions are not supported")]
+    UnsupportedTokenExtension,
 }

@@ -3,11 +3,11 @@ use {
         constants::{ESCROW_SEED, ESCROW_TOKEN_SEED, PAUSE_ESCROW_RELEASE, PROTOCOL_SEED},
         error::IronVaultError,
         events::EscrowReleased,
-        security::pause::require_protocol_active,
+        security::{pause::require_protocol_active, token_policy::mint_extensions_supported},
         state::{Escrow, EscrowStatus, ProtocolConfig},
     },
     anchor_lang::prelude::*,
-    anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
+    anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 #[derive(Accounts)]
@@ -28,22 +28,32 @@ pub struct ReleaseEscrow<'info> {
         constraint = escrow.token_program == token_program.key(),
     )]
     pub escrow: Account<'info, Escrow>,
-    pub mint: Account<'info, Mint>,
+    #[account(
+        constraint = mint.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
+        constraint = mint_extensions_supported(&mint.to_account_info())?
+            @ IronVaultError::UnsupportedTokenExtension,
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
     #[account(
         mut,
         seeds = [ESCROW_TOKEN_SEED, escrow.key().as_ref()],
         bump,
         constraint = escrow_token.owner == escrow.key() @ IronVaultError::InvalidCustodyBalance,
         constraint = escrow_token.mint == escrow.mint @ IronVaultError::InvalidSourceMint,
+        constraint = escrow_token.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
     )]
-    pub escrow_token: Account<'info, TokenAccount>,
+    pub escrow_token: InterfaceAccount<'info, TokenAccount>,
     #[account(
         mut,
         constraint = recipient_token.owner == escrow.recipient @ IronVaultError::InvalidRecipientOwner,
         constraint = recipient_token.mint == escrow.mint @ IronVaultError::InvalidRecipientMint,
+        constraint = recipient_token.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
     )]
-    pub recipient_token: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub recipient_token: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 pub fn release(ctx: Context<ReleaseEscrow>) -> Result<()> {
@@ -72,7 +82,7 @@ pub fn release(ctx: Context<ReleaseEscrow>) -> Result<()> {
     let custody_before = ctx.accounts.escrow_token.amount;
     let recipient_before = ctx.accounts.recipient_token.amount;
 
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.key(),
             TransferChecked {

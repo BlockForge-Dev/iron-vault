@@ -163,6 +163,10 @@ For every token CPI, Anchor constraints and handler checks jointly establish:
 - checked token transfer semantics are used, including mint decimals where the
   selected token interface requires them.
 
+Both legacy SPL Token accounts and Token-2022 accounts are deserialized through
+Anchor's token interface. Token-2022 mint TLV data is parsed independently and
+must contain no initialized extensions under the v1 policy.
+
 Associated token accounts are not mandatory. This permits beneficiaries to use
 any valid fixed token account while retaining explicit owner/mint validation.
 

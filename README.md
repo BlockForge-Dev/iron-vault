@@ -5,7 +5,7 @@ policy-controlled token vaults on Solana. The intended implementation language
 is Rust using Anchor.
 
 The repository contains the Milestone 0 specification, reproducible Milestone 1
-toolchain, IronVault v0.1 classic SPL Token escrow lifecycle, and a multi-asset
+toolchain, IronVault v0.1 SPL/vanilla Token-2022 escrow lifecycle, and a multi-asset
 vault core with role permissions, withdrawal limits, timelocked withdrawals,
 and directional emergency controls:
 
@@ -14,6 +14,7 @@ and directional emergency controls:
 - [State machines](docs/STATE_MACHINES.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Upgrade and external multisig policy](docs/UPGRADE_POLICY.md)
+- [Token-2022 security policy](docs/TOKEN_2022_POLICY.md)
 - [Development and reproducible builds](docs/DEVELOPMENT.md)
 
 ## Quick verification
@@ -33,7 +34,8 @@ decision record.
 
 IronVault v0.1 implements fixed-destination `create_escrow`, maker-authorized
 `release_escrow` before expiry, and permissionless `refund_escrow` at or after
-expiry for the classic SPL Token program. Refund destinations are constrained
+expiry for both the legacy SPL Token program and extension-free Token-2022 mints.
+Refund destinations are constrained
 to an account owned by the immutable maker and using the immutable escrow mint.
 The vault supports creation, authority-only asset registration, permissionless
 deposits into canonical per-mint custody PDAs, and withdrawals by the authority
@@ -52,8 +54,11 @@ escrow-release, vault-configuration, and vault-outflow pause flags. A vault
 authority or guardian may pause local outflows, but only the authority may
 unpause. Deposits, cancellation, and expired escrow refunds remain available
 during their relevant pauses. An authority address may be controlled by an
-external multisig, but embedded multisig governance and Token-2022 are not
-implemented. A test-only external 2-of-3 CPI harness validates the signer
+external multisig, but embedded multisig governance is not implemented. Token
+interactions use Anchor's shared token interface. Token-2022 mints with any
+initialized extension fail closed in v1; this includes Permanent Delegate,
+Transfer Hook, Transfer Fee, and Non-transferable. A test-only external 2-of-3
+CPI harness validates the signer
 abstraction, and a read-only deployment verifier checks finalized upgrade
 authority and bytecode. This does not prove any live Squads configuration. The
 code has not been deployed or independently audited and MUST NOT be represented

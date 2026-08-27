@@ -6,12 +6,14 @@ use {
         },
         error::IronVaultError,
         events::WithdrawalRequested,
-        security::pause::require_protocol_active,
-        security::permissions::validate_role_permission,
+        security::{
+            pause::require_protocol_active, permissions::validate_role_permission,
+            token_policy::mint_extensions_supported,
+        },
         state::{ProtocolConfig, Vault, VaultAsset, WithdrawalRequest, WithdrawalStatus},
     },
     anchor_lang::prelude::*,
-    anchor_spl::token::{Mint, TokenAccount},
+    anchor_spl::token_interface::{Mint, TokenAccount},
 };
 
 #[derive(Accounts)]
@@ -30,7 +32,13 @@ pub struct RequestWithdrawal<'info> {
         bump = vault.bump,
     )]
     pub vault: Box<Account<'info, Vault>>,
-    pub mint: Account<'info, Mint>,
+    #[account(
+        constraint = mint.to_account_info().owner == &vault_asset.token_program
+            @ IronVaultError::InvalidTokenProgram,
+        constraint = mint_extensions_supported(&mint.to_account_info())?
+            @ IronVaultError::UnsupportedTokenExtension,
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
     #[account(
         seeds = [VAULT_ASSET_SEED, vault.key().as_ref(), mint.key().as_ref()],
         bump = vault_asset.bump,
@@ -40,8 +48,10 @@ pub struct RequestWithdrawal<'info> {
     pub vault_asset: Box<Account<'info, VaultAsset>>,
     #[account(
         constraint = recipient_token.mint == mint.key() @ IronVaultError::InvalidWithdrawalMint,
+        constraint = recipient_token.to_account_info().owner == &vault_asset.token_program
+            @ IronVaultError::InvalidTokenProgram,
     )]
-    pub recipient_token: Account<'info, TokenAccount>,
+    pub recipient_token: InterfaceAccount<'info, TokenAccount>,
     #[account(
         init,
         payer = proposer,

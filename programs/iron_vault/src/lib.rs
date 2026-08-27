@@ -38,7 +38,7 @@ pub mod iron_vault {
         instructions::set_protocol_pause::set_pause(ctx, flags)
     }
 
-    /// Creates and atomically funds a fixed-destination classic SPL escrow.
+    /// Creates and atomically funds a fixed-destination supported-token escrow.
     pub fn create_escrow(
         ctx: Context<CreateEscrow>,
         escrow_id: u64,
@@ -84,7 +84,7 @@ pub mod iron_vault {
         instructions::pause_vault::unpause(ctx)
     }
 
-    /// Registers a classic SPL mint and its canonical vault custody account.
+    /// Registers a supported mint and its canonical vault custody account.
     pub fn register_asset(ctx: Context<RegisterAsset>) -> Result<()> {
         instructions::register_asset::register_vault_asset(ctx)
     }

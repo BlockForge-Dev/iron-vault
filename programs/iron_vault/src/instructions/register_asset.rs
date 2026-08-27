@@ -5,11 +5,11 @@ use {
         },
         error::IronVaultError,
         events::VaultAssetRegistered,
-        security::pause::require_protocol_active,
+        security::{pause::require_protocol_active, token_policy::mint_extensions_supported},
         state::{ProtocolConfig, Vault, VaultAsset},
     },
     anchor_lang::prelude::*,
-    anchor_spl::token::{Mint, Token, TokenAccount},
+    anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface},
 };
 
 #[derive(Accounts)]
@@ -28,7 +28,13 @@ pub struct RegisterAsset<'info> {
         constraint = vault.authority == authority.key() @ IronVaultError::InvalidVaultAuthority,
     )]
     pub vault: Account<'info, Vault>,
-    pub mint: Account<'info, Mint>,
+    #[account(
+        constraint = mint.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
+        constraint = mint_extensions_supported(&mint.to_account_info())?
+            @ IronVaultError::UnsupportedTokenExtension,
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
     #[account(
         init,
         payer = authority,
@@ -46,8 +52,8 @@ pub struct RegisterAsset<'info> {
         token::authority = vault,
         token::token_program = token_program,
     )]
-    pub vault_token: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub vault_token: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 

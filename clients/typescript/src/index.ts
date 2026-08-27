@@ -2,6 +2,17 @@
 export const IRON_VAULT_PROGRAM_ID =
   "2UWmTuefm4gqbfuZP36NSJMMSKLM4Rbop25jf1uBZAu1" as const;
 
+/** Token programs admitted by the on-chain v1 token policy. */
+export const TOKEN_PROGRAM_IDS = Object.freeze({
+  legacy: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  token2022: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+} as const);
+
+/** V1 accepts Token-2022 mints only when their initialized extension list is empty. */
+export const TOKEN_2022_POLICY = Object.freeze({
+  allowMintExtensions: false,
+} as const);
+
 /** Stable ASCII PDA namespaces from the Milestone 0 account model. */
 export const PDA_SEEDS = Object.freeze({
   protocol: "protocol",

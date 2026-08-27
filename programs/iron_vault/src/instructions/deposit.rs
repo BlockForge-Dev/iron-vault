@@ -3,10 +3,11 @@ use {
         constants::{VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED},
         error::IronVaultError,
         events::VaultDeposit,
+        security::token_policy::mint_extensions_supported,
         state::{Vault, VaultAsset},
     },
     anchor_lang::prelude::*,
-    anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
+    anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 #[derive(Accounts)]
@@ -21,7 +22,13 @@ pub struct Deposit<'info> {
         bump = vault.bump,
     )]
     pub vault: Account<'info, Vault>,
-    pub mint: Account<'info, Mint>,
+    #[account(
+        constraint = mint.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
+        constraint = mint_extensions_supported(&mint.to_account_info())?
+            @ IronVaultError::UnsupportedTokenExtension,
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
     #[account(
         seeds = [VAULT_ASSET_SEED, vault.key().as_ref(), mint.key().as_ref()],
         bump = vault_asset.bump,
@@ -34,17 +41,21 @@ pub struct Deposit<'info> {
         mut,
         constraint = source_token.owner == depositor.key() @ IronVaultError::InvalidDepositSourceOwner,
         constraint = source_token.mint == vault_asset.mint @ IronVaultError::InvalidDepositSourceMint,
+        constraint = source_token.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
     )]
-    pub source_token: Account<'info, TokenAccount>,
+    pub source_token: InterfaceAccount<'info, TokenAccount>,
     #[account(
         mut,
         seeds = [VAULT_TOKEN_SEED, vault.key().as_ref(), mint.key().as_ref()],
         bump,
         constraint = vault_token.owner == vault.key() @ IronVaultError::InvalidVaultCustodyBalance,
         constraint = vault_token.mint == vault_asset.mint @ IronVaultError::InvalidDepositSourceMint,
+        constraint = vault_token.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
     )]
-    pub vault_token: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub vault_token: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 pub fn deposit_tokens(ctx: Context<Deposit>, amount: u64) -> Result<()> {
@@ -65,7 +76,7 @@ pub fn deposit_tokens(ctx: Context<Deposit>, amount: u64) -> Result<()> {
         .checked_add(amount)
         .ok_or(IronVaultError::InvalidVaultCustodyBalance)?;
 
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.key(),
             TransferChecked {

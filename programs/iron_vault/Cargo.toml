@@ -24,9 +24,8 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
 anchor-lang.workspace = true
-# Anchor 1.1.2's token-account init derive references the shared interface
-# helpers at compile time. Runtime acceptance remains classic SPL-only because
-# every instruction requires `Program<Token>`.
+# The shared token interface supports classic SPL Token and Token-2022. Runtime
+# policy admits only extension-free Token-2022 mints in v1.
 anchor-spl = { workspace = true, features = ["token", "token_2022"] }
 
 [dev-dependencies]

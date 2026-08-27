@@ -8,6 +8,7 @@ use {
         events::VaultLimitsUpdated,
         security::pause::require_protocol_active,
         security::permissions::validate_role_permission,
+        security::token_policy::mint_extensions_supported,
         state::{ProtocolConfig, Vault, VaultAsset},
     },
     anchor_lang::prelude::*,
@@ -27,7 +28,13 @@ pub struct UpdateLimits<'info> {
         bump = vault.bump,
     )]
     pub vault: Account<'info, Vault>,
-    pub mint: Account<'info, anchor_spl::token::Mint>,
+    #[account(
+        constraint = mint.to_account_info().owner == &vault_asset.token_program
+            @ IronVaultError::InvalidTokenProgram,
+        constraint = mint_extensions_supported(&mint.to_account_info())?
+            @ IronVaultError::UnsupportedTokenExtension,
+    )]
+    pub mint: InterfaceAccount<'info, anchor_spl::token_interface::Mint>,
     #[account(
         mut,
         seeds = [VAULT_ASSET_SEED, vault.key().as_ref(), mint.key().as_ref()],

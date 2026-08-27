@@ -3,11 +3,11 @@ use {
         constants::{ESCROW_SEED, ESCROW_TOKEN_SEED, PAUSE_ESCROW_CREATE, PROTOCOL_SEED},
         error::IronVaultError,
         events::EscrowCreated,
-        security::pause::require_protocol_active,
+        security::{pause::require_protocol_active, token_policy::mint_extensions_supported},
         state::{Escrow, EscrowStatus, ProtocolConfig},
     },
     anchor_lang::prelude::*,
-    anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
+    anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 #[derive(Accounts)]
@@ -17,13 +17,21 @@ pub struct CreateEscrow<'info> {
     pub maker: Signer<'info>,
     #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
     pub protocol_config: Account<'info, ProtocolConfig>,
-    pub mint: Account<'info, Mint>,
+    #[account(
+        constraint = mint.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
+        constraint = mint_extensions_supported(&mint.to_account_info())?
+            @ IronVaultError::UnsupportedTokenExtension,
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
     #[account(
         mut,
         constraint = maker_token.owner == maker.key() @ IronVaultError::InvalidSourceOwner,
         constraint = maker_token.mint == mint.key() @ IronVaultError::InvalidSourceMint,
+        constraint = maker_token.to_account_info().owner == token_program.to_account_info().key
+            @ IronVaultError::InvalidTokenProgram,
     )]
-    pub maker_token: Account<'info, TokenAccount>,
+    pub maker_token: InterfaceAccount<'info, TokenAccount>,
     #[account(
         init,
         payer = maker,
@@ -41,8 +49,8 @@ pub struct CreateEscrow<'info> {
         token::authority = escrow,
         token::token_program = token_program,
     )]
-    pub escrow_token: Account<'info, TokenAccount>,
-    pub token_program: Program<'info, Token>,
+    pub escrow_token: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 
@@ -88,7 +96,7 @@ pub fn create(
     escrow.reserved = [0; 30];
 
     let source_before = ctx.accounts.maker_token.amount;
-    token::transfer_checked(
+    token_interface::transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.key(),
             TransferChecked {

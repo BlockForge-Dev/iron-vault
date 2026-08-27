@@ -25,7 +25,7 @@ claim of mainnet readiness.
 |---|---|---|
 | Solana runtime | signer enforcement, ownership, atomic transactions, account locks | Application policy |
 | Clock sysvar | on-chain time used by guards | Precise wall-clock scheduling |
-| SPL Token program | documented transfer/account semantics | Token-2022 extension behavior |
+| SPL Token and Token-2022 programs | documented base transfer/account semantics | Semantics of Token-2022 extensions rejected by policy |
 | Program upgrade authority | Can replace all program logic | Custody safety after compromise |
 | Vault authority | Roles, policy, destinations it directly authorizes | Protocol-global administration |
 | Protocol admin | Protocol config and global pause | Withdrawing user funds |
@@ -69,7 +69,7 @@ Solana runtime isolation, or alter finalized ledger state.
 | T7 | Guardian drains funds | Guardian has pause/cancel only; destination cannot be supplied to those instructions | Compromised guardian can deny service |
 | T8 | Protocol admin drains funds | No admin custody signer path or rescue transfer instruction | Malicious upgrade authority can add one in a future binary |
 | T9 | Malicious operator | Least-privilege bitmask, per-call live role check, limits/timelocks, fixed request | Authorized instant withdrawals may choose any matching-mint destination |
-| T10 | Hostile Token-2022 behavior | Deny Token-2022 in v1; later require explicit extension allowlist and tests | Original token mint authorities may still inflate supply or freeze accounts where supported |
+| T10 | Hostile Token-2022 behavior | Parse mint TLV data and accept only an empty extension list; reject Permanent Delegate, Transfer Hook, Transfer Fee, Non-transferable, and unknown extensions | Accepted mint authorities may still inflate supply or freeze accounts where base semantics support it |
 | T11 | Wrong token program / mint | Store and constrain both; token account/mint owner and relationship checks | Bugs in supported token program are external |
 | T12 | Direct custody transfer | State tracks intended amount/policy, never equates raw balance with entitlement | Unsolicited excess can be stranded in v1 |
 | T13 | Account close/rent theft | Fixed close recipients; retain state tombstones | Rent remains locked in non-closed state accounts |
@@ -134,7 +134,9 @@ independent security review.
 
 ## 9. Known limitations and deferred decisions
 
-- Token-2022 is not supported in v1 despite future interface compatibility goals.
+- Only extension-free Token-2022 mints are supported; all mint extensions are
+  denied until their semantics and CPI account requirements receive explicit
+  protocol support.
 - Vault authority compromise is not recoverable by the protocol guardian.
 - Authority rotation is one-step rather than accept/confirm.
 - There is no recovery for tokens sent directly to custody in excess of tracked
