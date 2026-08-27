@@ -50,6 +50,7 @@ pub fn create_vault_account(
     vault.reserved = [0; 46];
 
     emit!(VaultCreated {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: vault.key(),
         namespace_authority: authority,
         authority,

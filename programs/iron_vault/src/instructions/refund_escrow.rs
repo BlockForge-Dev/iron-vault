@@ -111,6 +111,7 @@ pub fn refund(ctx: Context<RefundEscrow>) -> Result<()> {
 
     ctx.accounts.escrow.status = EscrowStatus::Refunded;
     emit!(EscrowRefunded {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         escrow: ctx.accounts.escrow.key(),
         escrow_token: ctx.accounts.escrow_token.key(),
         caller: ctx.accounts.caller.key(),

@@ -125,6 +125,7 @@ pub fn request(ctx: Context<RequestWithdrawal>, amount: u64) -> Result<()> {
     request.reserved = [0; 30];
 
     emit!(WithdrawalRequested {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: request.vault,
         vault_asset: request.vault_asset,
         withdrawal_request: request.key(),

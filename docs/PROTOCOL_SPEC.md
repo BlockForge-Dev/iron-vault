@@ -226,12 +226,15 @@ corresponding account must be a transaction signer when required.
 
 ## 9. Events and postconditions
 
-Every successful instruction emits a versioned event containing the affected
+Every successful state-changing instruction emits a versioned event containing the affected
 state PDA and the minimum immutable identifiers needed to replay transitions.
 Outflow events include vault/escrow, asset or mint, amount, fixed destination,
 actor, and resulting status/window spend. Events are observability aids, not
 authoritative state. An off-chain observer must tolerate duplicate delivery and
 reconcile against finalized on-chain accounts and transactions.
+
+The first serialized field after every event discriminator is `version: u16`.
+Event names and transition mappings are maintained in `docs/SDK_AND_CLI.md`.
 
 ## 10. Upgrade and trust model
 

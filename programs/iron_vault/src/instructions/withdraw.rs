@@ -166,6 +166,7 @@ pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     }
 
     emit!(VaultWithdrawal {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: ctx.accounts.vault.key(),
         vault_asset: ctx.accounts.vault_asset.key(),
         vault_token: ctx.accounts.vault_token.key(),

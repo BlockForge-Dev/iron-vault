@@ -59,6 +59,7 @@ pub fn grant(ctx: Context<GrantRole>, principal: Pubkey, permissions: u64) -> Re
     role.reserved = [0; 54];
 
     emit!(RoleGranted {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: role.vault,
         principal,
         permissions,

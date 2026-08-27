@@ -104,6 +104,7 @@ pub fn deposit_tokens(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     );
 
     emit!(VaultDeposit {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: ctx.accounts.vault.key(),
         vault_asset: ctx.accounts.vault_asset.key(),
         vault_token: ctx.accounts.vault_token.key(),

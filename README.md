@@ -15,6 +15,7 @@ and directional emergency controls:
 - [Threat model](docs/THREAT_MODEL.md)
 - [Upgrade and external multisig policy](docs/UPGRADE_POLICY.md)
 - [Token-2022 security policy](docs/TOKEN_2022_POLICY.md)
+- [Events, TypeScript SDK, and CLI](docs/SDK_AND_CLI.md)
 - [Development and reproducible builds](docs/DEVELOPMENT.md)
 
 ## Quick verification
@@ -63,3 +64,23 @@ abstraction, and a read-only deployment verifier checks finalized upgrade
 authority and bytecode. This does not prove any live Squads configuration. The
 code has not been deployed or independently audited and MUST NOT be represented
 as safe for arbitrary third-party mainnet funds.
+
+## TypeScript SDK
+
+The workspace includes a transaction-sending SDK and CLI. The SDK derives
+canonical PDAs, detects legacy SPL versus Token-2022 from the mint owner, derives
+associated token accounts, and encodes the exact Anchor instruction layout:
+
+```ts
+const result = await ironVault.createEscrow({
+  recipient,
+  mint,
+  amount: 1_000_000n,
+  expiresAt: new Date("2030-01-01T00:00:00Z"),
+});
+```
+
+Run `pnpm build`, then `pnpm iron-vault --help`. The packaged CLI exposes the
+same entry point directly as `iron-vault`. See the
+[SDK and CLI guide](docs/SDK_AND_CLI.md) for signer, RPC, token-account, and
+finality boundaries.

@@ -124,6 +124,7 @@ pub fn create(
     );
 
     emit!(EscrowCreated {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         escrow: ctx.accounts.escrow.key(),
         escrow_token: ctx.accounts.escrow_token.key(),
         maker,

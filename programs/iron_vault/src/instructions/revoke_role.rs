@@ -44,6 +44,7 @@ pub fn revoke(ctx: Context<RevokeRole>, _principal: Pubkey) -> Result<()> {
     role.active = false;
 
     emit!(RoleRevoked {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: role.vault,
         principal: role.principal,
         previous_permissions,

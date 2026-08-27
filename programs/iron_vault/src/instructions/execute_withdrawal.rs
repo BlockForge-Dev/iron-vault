@@ -155,6 +155,7 @@ pub fn execute(ctx: Context<ExecuteWithdrawal>) -> Result<()> {
     ctx.accounts.withdrawal_request.status = WithdrawalStatus::Executed;
 
     emit!(WithdrawalExecuted {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: ctx.accounts.vault.key(),
         vault_asset: ctx.accounts.vault_asset.key(),
         withdrawal_request: ctx.accounts.withdrawal_request.key(),

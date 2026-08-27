@@ -95,6 +95,7 @@ pub fn update(
     asset.request_execution_window_seconds = request_execution_window_seconds;
 
     emit!(VaultLimitsUpdated {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: ctx.accounts.vault.key(),
         vault_asset: asset.key(),
         mint: asset.mint,

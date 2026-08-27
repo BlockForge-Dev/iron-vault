@@ -4,13 +4,20 @@
   "private": true,
   "type": "module",
   "exports": "./dist/index.js",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "pnpm run build && node --test tests/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@types/node": "24.10.0",
     "typescript": "5.9.2"
+  },
+  "dependencies": {
+    "@noble/hashes": "1.8.0",
+    "@solana/web3.js": "1.98.4"
   }
 }

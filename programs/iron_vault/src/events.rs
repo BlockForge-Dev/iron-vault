@@ -2,14 +2,15 @@ use anchor_lang::prelude::*;
 
 #[event]
 pub struct ProtocolInitialized {
+    pub version: u16,
     pub protocol_config: Pubkey,
     pub admin: Pubkey,
     pub guardian: Pubkey,
-    pub version: u16,
 }
 
 #[event]
 pub struct ProtocolPauseUpdated {
+    pub version: u16,
     pub protocol_config: Pubkey,
     pub caller: Pubkey,
     pub previous_flags: u32,
@@ -19,6 +20,7 @@ pub struct ProtocolPauseUpdated {
 /// Emitted after an escrow and its custody account are atomically funded.
 #[event]
 pub struct EscrowCreated {
+    pub version: u16,
     pub escrow: Pubkey,
     pub escrow_token: Pubkey,
     pub maker: Pubkey,
@@ -33,6 +35,7 @@ pub struct EscrowCreated {
 /// Emitted after a maker releases the exact escrow amount to its recipient.
 #[event]
 pub struct EscrowReleased {
+    pub version: u16,
     pub escrow: Pubkey,
     pub escrow_token: Pubkey,
     pub maker: Pubkey,
@@ -45,6 +48,7 @@ pub struct EscrowReleased {
 /// Emitted after an expired escrow is returned to its immutable maker.
 #[event]
 pub struct EscrowRefunded {
+    pub version: u16,
     pub escrow: Pubkey,
     pub escrow_token: Pubkey,
     pub caller: Pubkey,
@@ -57,6 +61,7 @@ pub struct EscrowRefunded {
 /// Emitted when an authority creates a new vault namespace.
 #[event]
 pub struct VaultCreated {
+    pub version: u16,
     pub vault: Pubkey,
     pub namespace_authority: Pubkey,
     pub authority: Pubkey,
@@ -66,6 +71,7 @@ pub struct VaultCreated {
 
 #[event]
 pub struct VaultAuthorityUpdated {
+    pub version: u16,
     pub vault: Pubkey,
     pub previous_authority: Pubkey,
     pub new_authority: Pubkey,
@@ -73,6 +79,7 @@ pub struct VaultAuthorityUpdated {
 
 #[event]
 pub struct VaultPauseUpdated {
+    pub version: u16,
     pub vault: Pubkey,
     pub caller: Pubkey,
     pub paused: bool,
@@ -81,6 +88,7 @@ pub struct VaultPauseUpdated {
 /// Emitted when a supported mint is registered with a vault.
 #[event]
 pub struct VaultAssetRegistered {
+    pub version: u16,
     pub vault: Pubkey,
     pub vault_asset: Pubkey,
     pub vault_token: Pubkey,
@@ -91,6 +99,7 @@ pub struct VaultAssetRegistered {
 /// Emitted after an exact permissionless deposit reaches vault custody.
 #[event]
 pub struct VaultDeposit {
+    pub version: u16,
     pub vault: Pubkey,
     pub vault_asset: Pubkey,
     pub vault_token: Pubkey,
@@ -103,6 +112,7 @@ pub struct VaultDeposit {
 /// Emitted after the authority withdraws an exact amount from vault custody.
 #[event]
 pub struct VaultWithdrawal {
+    pub version: u16,
     pub vault: Pubkey,
     pub vault_asset: Pubkey,
     pub vault_token: Pubkey,
@@ -115,6 +125,7 @@ pub struct VaultWithdrawal {
 /// Emitted when the vault authority creates or replaces an exact role mask.
 #[event]
 pub struct RoleGranted {
+    pub version: u16,
     pub vault: Pubkey,
     pub principal: Pubkey,
     pub permissions: u64,
@@ -123,6 +134,7 @@ pub struct RoleGranted {
 /// Emitted when the vault authority immediately deactivates a role.
 #[event]
 pub struct RoleRevoked {
+    pub version: u16,
     pub vault: Pubkey,
     pub principal: Pubkey,
     pub previous_permissions: u64,
@@ -131,6 +143,7 @@ pub struct RoleRevoked {
 /// Emitted after an authorized caller updates one asset's withdrawal limits.
 #[event]
 pub struct VaultLimitsUpdated {
+    pub version: u16,
     pub vault: Pubkey,
     pub vault_asset: Pubkey,
     pub mint: Pubkey,
@@ -147,6 +160,7 @@ pub struct VaultLimitsUpdated {
 
 #[event]
 pub struct WithdrawalRequested {
+    pub version: u16,
     pub vault: Pubkey,
     pub vault_asset: Pubkey,
     pub withdrawal_request: Pubkey,
@@ -163,6 +177,7 @@ pub struct WithdrawalRequested {
 
 #[event]
 pub struct WithdrawalExecuted {
+    pub version: u16,
     pub vault: Pubkey,
     pub vault_asset: Pubkey,
     pub withdrawal_request: Pubkey,
@@ -175,9 +190,65 @@ pub struct WithdrawalExecuted {
 
 #[event]
 pub struct WithdrawalCancelled {
+    pub version: u16,
     pub vault: Pubkey,
     pub withdrawal_request: Pubkey,
     pub caller: Pubkey,
     pub proposer: Pubkey,
     pub withdrawal_id: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        anchor_lang::{Discriminator, Event},
+        std::collections::HashSet,
+    };
+
+    #[test]
+    fn every_event_has_a_unique_anchor_discriminator() {
+        let discriminators = [
+            ProtocolInitialized::DISCRIMINATOR,
+            ProtocolPauseUpdated::DISCRIMINATOR,
+            EscrowCreated::DISCRIMINATOR,
+            EscrowReleased::DISCRIMINATOR,
+            EscrowRefunded::DISCRIMINATOR,
+            VaultCreated::DISCRIMINATOR,
+            VaultAuthorityUpdated::DISCRIMINATOR,
+            VaultPauseUpdated::DISCRIMINATOR,
+            VaultAssetRegistered::DISCRIMINATOR,
+            VaultDeposit::DISCRIMINATOR,
+            VaultWithdrawal::DISCRIMINATOR,
+            RoleGranted::DISCRIMINATOR,
+            RoleRevoked::DISCRIMINATOR,
+            VaultLimitsUpdated::DISCRIMINATOR,
+            WithdrawalRequested::DISCRIMINATOR,
+            WithdrawalExecuted::DISCRIMINATOR,
+            WithdrawalCancelled::DISCRIMINATOR,
+        ];
+        assert!(discriminators.iter().all(|value| value.len() == 8));
+        assert_eq!(
+            discriminators.iter().copied().collect::<HashSet<_>>().len(),
+            discriminators.len()
+        );
+    }
+
+    #[test]
+    fn event_schema_version_is_nonzero() {
+        assert!(crate::constants::INITIAL_SCHEMA_VERSION > 0);
+        let event = ProtocolPauseUpdated {
+            version: crate::constants::INITIAL_SCHEMA_VERSION,
+            protocol_config: Pubkey::new_unique(),
+            caller: Pubkey::new_unique(),
+            previous_flags: 0,
+            new_flags: 1,
+        };
+        let encoded = event.data();
+        assert_eq!(&encoded[..8], ProtocolPauseUpdated::DISCRIMINATOR);
+        assert_eq!(
+            u16::from_le_bytes(encoded[8..10].try_into().unwrap()),
+            crate::constants::INITIAL_SCHEMA_VERSION
+        );
+    }
 }

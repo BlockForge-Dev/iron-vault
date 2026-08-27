@@ -40,8 +40,15 @@ make test
 
 `make test` verifies versions, formatting, Clippy, host unit tests, SBF builds for
 IronVault and the test-only mock multisig, the in-process LiteSVM suites, SDK
-tests, and offline upgrade-metadata regressions. `make ci` additionally runs
+and CLI builds/tests, and offline upgrade-metadata regressions. `make ci` additionally runs
 RustSec and pnpm dependency audits.
+
+The SDK pins `@solana/web3.js`. Canonical associated-token derivation and its
+six-account idempotent-create instruction are implemented locally and tested;
+the broader `@solana/spl-token` package is intentionally excluded because its
+current dependency graph contains an unpatched high-severity advisory. Optional
+WebSocket native packages (`bufferutil` and `utf-8-validate`) have install scripts
+disabled in `pnpm-workspace.yaml`; JavaScript fallbacks remain available.
 
 ## Test boundaries
 
@@ -63,3 +70,10 @@ vulnerabilities fail while maintenance/unsoundness warnings remain visible. The
 warnings are not runtime program dependencies except for Anchor's legacy
 `bincode`; review them on every dependency update and do not expand this policy
 into ignored vulnerability IDs.
+
+`pnpm audit` reports one moderate advisory in `uuid@8.3.2`, reached through
+`@solana/web3.js -> jayson`. The advisory concerns the v3/v5/v6 APIs when a
+caller supplies an undersized output buffer; the pinned `jayson@4.3.0` source
+invokes only `uuid.v4()` without a buffer. There is no patched `uuid` release
+within Jayson's declared major range. CI still fails on high or critical npm
+advisories, and this residual must be reevaluated when the Web3 pin changes.

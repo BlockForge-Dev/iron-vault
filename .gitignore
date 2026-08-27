@@ -1,6 +1,7 @@
 target/
 node_modules/
 /clients/typescript/dist/
+/clients/cli/dist/
 .anchor/
 .pnpm-store/
 *.log

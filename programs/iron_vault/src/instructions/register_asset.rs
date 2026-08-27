@@ -76,6 +76,7 @@ pub fn register_vault_asset(ctx: Context<RegisterAsset>) -> Result<()> {
     asset.reserved = [0; 30];
 
     emit!(VaultAssetRegistered {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: ctx.accounts.vault.key(),
         vault_asset: asset.key(),
         vault_token: ctx.accounts.vault_token.key(),

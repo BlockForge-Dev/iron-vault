@@ -8,8 +8,9 @@
     "pnpm": "11.23.0"
   },
   "scripts": {
-    "build": "pnpm --filter @iron-vault/sdk build",
-    "test": "pnpm --filter @iron-vault/sdk test && node --test scripts/tests/verify-program-metadata.test.mjs",
-    "typecheck": "pnpm --filter @iron-vault/sdk typecheck"
+    "build": "pnpm --filter @iron-vault/sdk build && pnpm --filter @iron-vault/cli build",
+    "test": "pnpm --filter @iron-vault/sdk test && pnpm --filter @iron-vault/cli test && node --test scripts/tests/verify-program-metadata.test.mjs",
+    "typecheck": "pnpm --filter @iron-vault/sdk typecheck && pnpm --filter @iron-vault/cli typecheck",
+    "iron-vault": "node clients/cli/dist/index.js"
   }
 }

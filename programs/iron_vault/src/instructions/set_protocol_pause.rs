@@ -41,6 +41,7 @@ pub fn set_pause(ctx: Context<SetProtocolPause>, flags: u32) -> Result<()> {
     let previous_flags = config.pause_flags;
     config.pause_flags = flags;
     emit!(ProtocolPauseUpdated {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         protocol_config: config.key(),
         caller,
         previous_flags,

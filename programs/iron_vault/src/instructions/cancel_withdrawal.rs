@@ -35,6 +35,7 @@ pub fn cancel(ctx: Context<CancelWithdrawal>) -> Result<()> {
     ctx.accounts.withdrawal_request.status = WithdrawalStatus::Cancelled;
 
     emit!(WithdrawalCancelled {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: ctx.accounts.vault.key(),
         withdrawal_request: ctx.accounts.withdrawal_request.key(),
         caller: ctx.accounts.caller.key(),

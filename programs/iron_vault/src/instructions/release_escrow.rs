@@ -114,6 +114,7 @@ pub fn release(ctx: Context<ReleaseEscrow>) -> Result<()> {
 
     ctx.accounts.escrow.status = EscrowStatus::Released;
     emit!(EscrowReleased {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         escrow: ctx.accounts.escrow.key(),
         escrow_token: ctx.accounts.escrow_token.key(),
         maker: ctx.accounts.escrow.maker,

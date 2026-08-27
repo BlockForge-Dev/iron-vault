@@ -39,6 +39,7 @@ pub fn set_authority(ctx: Context<SetVaultAuthority>, new_authority: Pubkey) -> 
 
     ctx.accounts.vault.authority = new_authority;
     emit!(VaultAuthorityUpdated {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: ctx.accounts.vault.key(),
         previous_authority,
         new_authority,

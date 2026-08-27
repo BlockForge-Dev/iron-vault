@@ -1,0 +1,22 @@
+{
+  "name": "@iron-vault/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "iron-vault": "dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "pnpm --filter @iron-vault/sdk build && tsc -p tsconfig.json",
+    "test": "pnpm run build && node --test tests/*.test.mjs",
+    "typecheck": "pnpm --filter @iron-vault/sdk build && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@iron-vault/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "typescript": "5.9.2"
+  }
+}

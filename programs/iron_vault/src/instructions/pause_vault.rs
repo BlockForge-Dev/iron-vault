@@ -48,6 +48,7 @@ pub fn pause(ctx: Context<PauseVault>) -> Result<()> {
     );
     ctx.accounts.vault.paused = true;
     emit!(VaultPauseUpdated {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: ctx.accounts.vault.key(),
         caller,
         paused: true,
@@ -62,6 +63,7 @@ pub fn unpause(ctx: Context<UnpauseVault>) -> Result<()> {
     );
     ctx.accounts.vault.paused = false;
     emit!(VaultPauseUpdated {
+        version: crate::constants::INITIAL_SCHEMA_VERSION,
         vault: ctx.accounts.vault.key(),
         caller: ctx.accounts.authority.key(),
         paused: false,
