@@ -1,5 +1,21 @@
 use anchor_lang::prelude::*;
 
+#[event]
+pub struct ProtocolInitialized {
+    pub protocol_config: Pubkey,
+    pub admin: Pubkey,
+    pub guardian: Pubkey,
+    pub version: u16,
+}
+
+#[event]
+pub struct ProtocolPauseUpdated {
+    pub protocol_config: Pubkey,
+    pub caller: Pubkey,
+    pub previous_flags: u32,
+    pub new_flags: u32,
+}
+
 /// Emitted after an escrow and its custody account are atomically funded.
 #[event]
 pub struct EscrowCreated {
@@ -46,6 +62,13 @@ pub struct VaultCreated {
     pub authority: Pubkey,
     pub guardian: Pubkey,
     pub vault_id: u64,
+}
+
+#[event]
+pub struct VaultPauseUpdated {
+    pub vault: Pubkey,
+    pub caller: Pubkey,
+    pub paused: bool,
 }
 
 /// Emitted when a classic SPL mint is registered with a vault.

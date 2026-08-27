@@ -1,6 +1,9 @@
 /// Schema version reserved for the first protocol-state implementation.
 pub const INITIAL_SCHEMA_VERSION: u16 = 1;
 
+/// Namespace for the singleton protocol configuration PDA.
+pub const PROTOCOL_SEED: &[u8] = b"protocol";
+
 /// Namespace for escrow state PDAs.
 pub const ESCROW_SEED: &[u8] = b"escrow";
 
@@ -22,6 +25,13 @@ pub const ROLE_SEED: &[u8] = b"role";
 /// Namespace for immutable timelocked withdrawal request PDAs.
 pub const WITHDRAWAL_SEED: &[u8] = b"withdrawal";
 
+pub const PAUSE_ESCROW_CREATE: u32 = 1 << 0;
+pub const PAUSE_ESCROW_RELEASE: u32 = 1 << 1;
+pub const PAUSE_VAULT_CONFIG: u32 = 1 << 2;
+pub const PAUSE_VAULT_OUTFLOW: u32 = 1 << 3;
+pub const KNOWN_PAUSE_FLAGS: u32 =
+    PAUSE_ESCROW_CREATE | PAUSE_ESCROW_RELEASE | PAUSE_VAULT_CONFIG | PAUSE_VAULT_OUTFLOW;
+
 pub const PERMISSION_WITHDRAW: u64 = 1 << 0;
 pub const PERMISSION_REQUEST_WITHDRAWAL: u64 = 1 << 1;
 pub const PERMISSION_CANCEL_WITHDRAWAL: u64 = 1 << 2;
@@ -42,6 +52,16 @@ mod tests {
     #[test]
     fn initial_schema_version_is_nonzero() {
         assert_ne!(INITIAL_SCHEMA_VERSION, 0);
+        assert_eq!(PROTOCOL_SEED, b"protocol");
+    }
+
+    #[test]
+    fn pause_mask_contains_exactly_the_supported_scopes() {
+        assert_eq!(KNOWN_PAUSE_FLAGS, 0b1111);
+        assert_eq!(PAUSE_ESCROW_CREATE, 1);
+        assert_eq!(PAUSE_ESCROW_RELEASE, 2);
+        assert_eq!(PAUSE_VAULT_CONFIG, 4);
+        assert_eq!(PAUSE_VAULT_OUTFLOW, 8);
     }
 
     #[test]

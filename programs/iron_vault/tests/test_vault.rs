@@ -12,8 +12,13 @@ use {
         state::{Account as SplTokenAccount, AccountState, Mint as SplMint},
     },
     iron_vault::{
-        constants::{PERMISSION_MANAGE_LIMITS, PERMISSION_REQUEST_WITHDRAWAL, PERMISSION_WITHDRAW},
-        state::{RoleAssignment, Vault, VaultAsset, WithdrawalRequest, WithdrawalStatus},
+        constants::{
+            PAUSE_VAULT_CONFIG, PAUSE_VAULT_OUTFLOW, PERMISSION_MANAGE_LIMITS,
+            PERMISSION_REQUEST_WITHDRAWAL, PERMISSION_WITHDRAW,
+        },
+        state::{
+            ProtocolConfig, RoleAssignment, Vault, VaultAsset, WithdrawalRequest, WithdrawalStatus,
+        },
         ID,
     },
     litesvm::{types::TransactionResult, LiteSVM},
@@ -54,6 +59,12 @@ impl Fixture {
         for signer in [&authority, &guardian, &depositor, &attacker] {
             svm.airdrop(&signer.pubkey(), 10_000_000_000).unwrap();
         }
+        let initialize = initialize_protocol_instruction(
+            authority.pubkey(),
+            authority.pubkey(),
+            guardian.pubkey(),
+        );
+        send(&mut svm, &authority, initialize).unwrap();
         set_mint(
             &mut svm,
             mint,
@@ -138,6 +149,74 @@ fn vault_address(namespace_authority: Pubkey, vault_id: u64) -> Pubkey {
     .0
 }
 
+fn protocol_address() -> Pubkey {
+    Pubkey::find_program_address(&[b"protocol"], &ID).0
+}
+
+fn initialize_protocol_instruction(
+    initializer: Pubkey,
+    admin: Pubkey,
+    guardian: Pubkey,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::InitializeProtocol { admin, guardian }.data(),
+        iron_vault::accounts::InitializeProtocol {
+            initializer,
+            protocol_config: protocol_address(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn set_protocol_pause_instruction(
+    caller: Pubkey,
+    flags: u32,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::SetProtocolPause { flags }.data(),
+        iron_vault::accounts::SetProtocolPause {
+            caller,
+            protocol_config: protocol_address(),
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn pause_vault_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    caller: Pubkey,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::PauseVault {}.data(),
+        iron_vault::accounts::PauseVault {
+            caller,
+            vault: vault_address(fixture.authority.pubkey(), vault_id),
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn unpause_vault_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    authority: Pubkey,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::UnpauseVault {}.data(),
+        iron_vault::accounts::UnpauseVault {
+            authority,
+            vault: vault_address(fixture.authority.pubkey(), vault_id),
+        }
+        .to_account_metas(None),
+    )
+}
+
 fn asset_addresses(vault: Pubkey, mint: Pubkey) -> (Pubkey, Pubkey) {
     let vault_asset =
         Pubkey::find_program_address(&[b"vault_asset", vault.as_ref(), mint.as_ref()], &ID).0;
@@ -169,6 +248,7 @@ fn create_vault_instruction(
         &iron_vault::instruction::CreateVault { vault_id, guardian }.data(),
         iron_vault::accounts::CreateVault {
             authority,
+            protocol_config: protocol_address(),
             vault,
             system_program: system_program::ID,
         }
@@ -197,6 +277,7 @@ fn register_asset_instruction_for_mint(
         &iron_vault::instruction::RegisterAsset {}.data(),
         iron_vault::accounts::RegisterAsset {
             authority,
+            protocol_config: protocol_address(),
             vault,
             mint,
             vault_asset,
@@ -303,6 +384,7 @@ fn withdraw_instruction_with_role_for_mint(
         &iron_vault::instruction::Withdraw { amount }.data(),
         iron_vault::accounts::Withdraw {
             caller,
+            protocol_config: protocol_address(),
             vault,
             mint,
             vault_asset,
@@ -337,6 +419,7 @@ fn grant_role_instruction(
         .data(),
         iron_vault::accounts::GrantRole {
             authority: fixture.authority.pubkey(),
+            protocol_config: protocol_address(),
             vault,
             role_assignment,
             system_program: system_program::ID,
@@ -357,6 +440,7 @@ fn revoke_role_instruction(
         &iron_vault::instruction::RevokeRole { principal }.data(),
         iron_vault::accounts::RevokeRole {
             authority: fixture.authority.pubkey(),
+            protocol_config: protocol_address(),
             vault,
             role_assignment,
         }
@@ -418,6 +502,7 @@ fn update_full_policy_instruction(
         .data(),
         iron_vault::accounts::UpdateLimits {
             caller,
+            protocol_config: protocol_address(),
             vault,
             mint,
             vault_asset,
@@ -450,6 +535,7 @@ fn request_withdrawal_instruction(
         &iron_vault::instruction::RequestWithdrawal { amount }.data(),
         iron_vault::accounts::RequestWithdrawal {
             proposer,
+            protocol_config: protocol_address(),
             vault,
             mint: fixture.mint,
             vault_asset,
@@ -484,6 +570,7 @@ fn execute_withdrawal_instruction(
         &iron_vault::instruction::ExecuteWithdrawal {}.data(),
         iron_vault::accounts::ExecuteWithdrawal {
             caller,
+            protocol_config: protocol_address(),
             vault,
             mint,
             vault_asset,
@@ -548,6 +635,11 @@ fn token_balance(svm: &LiteSVM, address: Pubkey) -> u64 {
 fn vault_state(svm: &LiteSVM, address: Pubkey) -> Vault {
     let account = svm.get_account(&address).unwrap();
     Vault::try_deserialize(&mut account.data.as_slice()).unwrap()
+}
+
+fn protocol_state(svm: &LiteSVM) -> ProtocolConfig {
+    let account = svm.get_account(&protocol_address()).unwrap();
+    ProtocolConfig::try_deserialize(&mut account.data.as_slice()).unwrap()
 }
 
 fn asset_state(svm: &LiteSVM, address: Pubkey) -> VaultAsset {
@@ -1985,4 +2077,206 @@ fn policy_change_does_not_shorten_existing_request() {
         token_balance(&fixture.svm, fixture.destination_token),
         amount
     );
+}
+
+#[test]
+fn vault_guardian_can_pause_but_only_authority_can_unpause() {
+    let vault_id = 80;
+    let (mut fixture, vault, _, _) = registered_fixture(vault_id);
+    let pause = pause_vault_instruction(&fixture, vault_id, fixture.guardian.pubkey());
+    send(&mut fixture.svm, &fixture.guardian, pause).unwrap();
+    assert!(vault_state(&fixture.svm, vault).paused);
+
+    let guardian_unpause = unpause_vault_instruction(&fixture, vault_id, fixture.guardian.pubkey());
+    let result = send(&mut fixture.svm, &fixture.guardian, guardian_unpause);
+    assert_error_message(result, "Only the vault authority can unpause");
+    assert!(vault_state(&fixture.svm, vault).paused);
+
+    let authority_unpause =
+        unpause_vault_instruction(&fixture, vault_id, fixture.authority.pubkey());
+    send(&mut fixture.svm, &fixture.authority, authority_unpause).unwrap();
+    assert!(!vault_state(&fixture.svm, vault).paused);
+}
+
+#[test]
+fn random_wallet_cannot_change_local_pause_state() {
+    let vault_id = 81;
+    let (mut fixture, vault, _, _) = registered_fixture(vault_id);
+    let pause = pause_vault_instruction(&fixture, vault_id, fixture.attacker.pubkey());
+    let result = send(&mut fixture.svm, &fixture.attacker, pause);
+
+    assert_error_message(result, "Caller cannot pause this vault");
+    assert!(!vault_state(&fixture.svm, vault).paused);
+}
+
+#[test]
+fn local_pause_blocks_new_outflows_but_allows_deposits() {
+    let vault_id = 82;
+    let (mut fixture, vault, _, vault_token) = funded_fixture(vault_id, 1_000);
+    configure_timelock_policy(&mut fixture, vault_id, 100, 60);
+    let pause = pause_vault_instruction(&fixture, vault_id, fixture.guardian.pubkey());
+    send(&mut fixture.svm, &fixture.guardian, pause).unwrap();
+
+    let withdraw = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        50,
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, withdraw);
+    assert_error_message(result, "Vault is paused");
+
+    let request = request_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        0,
+        500,
+        None,
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, request);
+    assert_error_message(result, "Vault is paused");
+
+    let deposit = deposit_instruction(
+        &fixture,
+        vault_id,
+        fixture.depositor.pubkey(),
+        fixture.depositor_token,
+        100,
+    );
+    send(&mut fixture.svm, &fixture.depositor, deposit).unwrap();
+    assert_eq!(token_balance(&fixture.svm, vault_token), 1_100);
+    assert_eq!(vault_state(&fixture.svm, vault).next_withdrawal_id, 0);
+}
+
+#[test]
+fn local_pause_blocks_execution_but_allows_cancellation() {
+    let vault_id = 83;
+    let amount = 50_000;
+    let (mut fixture, vault, _, vault_token, request) = requested_fixture(vault_id, amount, 60);
+    let request_state = withdrawal_state(&fixture.svm, request);
+    let pause = pause_vault_instruction(&fixture, vault_id, fixture.guardian.pubkey());
+    send(&mut fixture.svm, &fixture.guardian, pause).unwrap();
+    set_clock(&mut fixture.svm, request_state.execute_after);
+
+    let execute = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, execute);
+    assert_error_message(result, "Vault is paused");
+
+    let cancel =
+        cancel_withdrawal_instruction(&fixture, vault_id, 0, fixture.guardian.pubkey(), None);
+    send(&mut fixture.svm, &fixture.guardian, cancel).unwrap();
+    assert_eq!(
+        withdrawal_state(&fixture.svm, request).status,
+        WithdrawalStatus::Cancelled
+    );
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount * 2);
+    assert!(vault_state(&fixture.svm, vault).paused);
+}
+
+#[test]
+fn protocol_vault_outflow_pause_blocks_transfers_but_not_deposits() {
+    let vault_id = 84;
+    let (mut fixture, _, _, vault_token) = funded_fixture(vault_id, 1_000);
+    let pause = set_protocol_pause_instruction(fixture.guardian.pubkey(), PAUSE_VAULT_OUTFLOW);
+    send(&mut fixture.svm, &fixture.guardian, pause).unwrap();
+
+    let withdraw = withdraw_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        100,
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, withdraw);
+    assert_error_message(result, "Protocol operation is paused");
+
+    let request = request_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        fixture.destination_token,
+        0,
+        500,
+        None,
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, request);
+    assert_error_message(result, "Protocol operation is paused");
+
+    let deposit = deposit_instruction(
+        &fixture,
+        vault_id,
+        fixture.depositor.pubkey(),
+        fixture.depositor_token,
+        100,
+    );
+    send(&mut fixture.svm, &fixture.depositor, deposit).unwrap();
+    assert_eq!(token_balance(&fixture.svm, vault_token), 1_100);
+    assert_eq!(
+        protocol_state(&fixture.svm).pause_flags,
+        PAUSE_VAULT_OUTFLOW
+    );
+}
+
+#[test]
+fn protocol_vault_outflow_pause_blocks_execution_but_not_cancellation() {
+    let vault_id = 86;
+    let amount = 50_000;
+    let (mut fixture, _, _, vault_token, request) = requested_fixture(vault_id, amount, 60);
+    let request_state = withdrawal_state(&fixture.svm, request);
+    let pause = set_protocol_pause_instruction(fixture.guardian.pubkey(), PAUSE_VAULT_OUTFLOW);
+    send(&mut fixture.svm, &fixture.guardian, pause).unwrap();
+    set_clock(&mut fixture.svm, request_state.execute_after);
+
+    let execute = execute_withdrawal_instruction(
+        &fixture,
+        vault_id,
+        0,
+        fixture.attacker.pubkey(),
+        fixture.mint,
+        fixture.destination_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, execute);
+    assert_error_message(result, "Protocol operation is paused");
+
+    let cancel =
+        cancel_withdrawal_instruction(&fixture, vault_id, 0, fixture.guardian.pubkey(), None);
+    send(&mut fixture.svm, &fixture.guardian, cancel).unwrap();
+    assert_eq!(
+        withdrawal_state(&fixture.svm, request).status,
+        WithdrawalStatus::Cancelled
+    );
+    assert_eq!(token_balance(&fixture.svm, vault_token), amount * 2);
+}
+
+#[test]
+fn protocol_vault_config_pause_blocks_configuration_only() {
+    let mut fixture = Fixture::new();
+    let pause = set_protocol_pause_instruction(fixture.guardian.pubkey(), PAUSE_VAULT_CONFIG);
+    send(&mut fixture.svm, &fixture.guardian, pause).unwrap();
+    let blocked_create =
+        create_vault_instruction(fixture.authority.pubkey(), 85, fixture.guardian.pubkey());
+    let result = send(&mut fixture.svm, &fixture.authority, blocked_create);
+    assert_error_message(result, "Protocol operation is paused");
+
+    let clear = set_protocol_pause_instruction(fixture.authority.pubkey(), 0);
+    send(&mut fixture.svm, &fixture.authority, clear).unwrap();
+    let create =
+        create_vault_instruction(fixture.authority.pubkey(), 85, fixture.guardian.pubkey());
+    send(&mut fixture.svm, &fixture.authority, create).unwrap();
+
+    let pause_again = set_protocol_pause_instruction(fixture.guardian.pubkey(), PAUSE_VAULT_CONFIG);
+    send(&mut fixture.svm, &fixture.guardian, pause_again).unwrap();
+    let register = register_asset_instruction(&fixture, fixture.authority.pubkey(), 85);
+    let result = send(&mut fixture.svm, &fixture.authority, register);
+    assert_error_message(result, "Protocol operation is paused");
 }

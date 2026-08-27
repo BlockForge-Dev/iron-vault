@@ -1,5 +1,25 @@
 use anchor_lang::prelude::*;
 
+/// Singleton administration and directional emergency-pause state.
+#[account]
+#[derive(Debug, InitSpace)]
+pub struct ProtocolConfig {
+    pub version: u16,
+    pub admin: Pubkey,
+    pub guardian: Pubkey,
+    pub pause_flags: u32,
+    pub bump: u8,
+    pub reserved: [u8; 61],
+}
+
+impl ProtocolConfig {
+    pub const SPACE: usize = 8 + Self::INIT_SPACE;
+
+    pub fn is_paused(&self, flag: u32) -> bool {
+        self.pause_flags & flag != 0
+    }
+}
+
 /// Closed state machine for a fixed-destination escrow.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, InitSpace, PartialEq, Eq)]
 pub enum EscrowStatus {
@@ -137,6 +157,8 @@ mod tests {
 
     #[test]
     fn vault_sizes_match_the_account_model() {
+        assert_eq!(ProtocolConfig::INIT_SPACE, 132);
+        assert_eq!(ProtocolConfig::SPACE, 140);
         assert_eq!(Vault::INIT_SPACE, 160);
         assert_eq!(Vault::SPACE, 168);
         assert_eq!(VaultAsset::INIT_SPACE, 192);

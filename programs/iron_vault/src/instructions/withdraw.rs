@@ -1,10 +1,14 @@
 use {
     crate::{
-        constants::{PERMISSION_WITHDRAW, VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED},
+        constants::{
+            PAUSE_VAULT_OUTFLOW, PERMISSION_WITHDRAW, PROTOCOL_SEED, VAULT_ASSET_SEED, VAULT_SEED,
+            VAULT_TOKEN_SEED,
+        },
         error::IronVaultError,
         events::VaultWithdrawal,
+        security::pause::require_protocol_active,
         security::permissions::validate_role_permission,
-        state::{Vault, VaultAsset},
+        state::{ProtocolConfig, Vault, VaultAsset},
     },
     anchor_lang::prelude::*,
     anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
@@ -13,6 +17,8 @@ use {
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
     pub caller: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Box<Account<'info, ProtocolConfig>>,
     #[account(
         seeds = [
             VAULT_SEED,
@@ -21,7 +27,7 @@ pub struct Withdraw<'info> {
         ],
         bump = vault.bump,
     )]
-    pub vault: Account<'info, Vault>,
+    pub vault: Box<Account<'info, Vault>>,
     pub mint: Account<'info, Mint>,
     #[account(
         mut,
@@ -31,7 +37,7 @@ pub struct Withdraw<'info> {
         has_one = mint,
         constraint = vault_asset.token_program == token_program.key(),
     )]
-    pub vault_asset: Account<'info, VaultAsset>,
+    pub vault_asset: Box<Account<'info, VaultAsset>>,
     #[account(
         mut,
         seeds = [VAULT_TOKEN_SEED, vault.key().as_ref(), mint.key().as_ref()],
@@ -49,6 +55,7 @@ pub struct Withdraw<'info> {
 }
 
 pub fn withdraw_tokens(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_VAULT_OUTFLOW)?;
     if ctx.accounts.caller.key() == ctx.accounts.vault.authority {
         require!(
             ctx.remaining_accounts.is_empty(),

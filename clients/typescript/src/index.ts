@@ -28,6 +28,16 @@ export const VAULT_PERMISSIONS = Object.freeze({
 
 export type VaultPermissionName = keyof typeof VAULT_PERMISSIONS;
 
+/** Directional protocol emergency scopes. Guardians may add but never clear these bits. */
+export const PROTOCOL_PAUSE_FLAGS = Object.freeze({
+  escrowCreate: 1 << 0,
+  escrowRelease: 1 << 1,
+  vaultConfig: 1 << 2,
+  vaultOutflow: 1 << 3,
+} as const);
+
+export type ProtocolPauseFlagName = keyof typeof PROTOCOL_PAUSE_FLAGS;
+
 /** Base-unit withdrawal limits for one registered vault asset. */
 export interface VaultWithdrawalPolicy {
   maxPerTransaction: bigint;

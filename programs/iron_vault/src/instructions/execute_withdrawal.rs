@@ -1,10 +1,14 @@
 use {
     crate::{
-        constants::{VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED, WITHDRAWAL_SEED},
+        constants::{
+            PAUSE_VAULT_OUTFLOW, PROTOCOL_SEED, VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED,
+            WITHDRAWAL_SEED,
+        },
         error::IronVaultError,
         events::WithdrawalExecuted,
         instructions::withdraw::next_window_state,
-        state::{Vault, VaultAsset, WithdrawalRequest, WithdrawalStatus},
+        security::pause::require_protocol_active,
+        state::{ProtocolConfig, Vault, VaultAsset, WithdrawalRequest, WithdrawalStatus},
     },
     anchor_lang::prelude::*,
     anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
@@ -13,6 +17,8 @@ use {
 #[derive(Accounts)]
 pub struct ExecuteWithdrawal<'info> {
     pub caller: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     #[account(
         seeds = [VAULT_SEED, vault.namespace_authority.as_ref(), vault.vault_id.to_le_bytes().as_ref()],
         bump = vault.bump,
@@ -58,6 +64,7 @@ pub struct ExecuteWithdrawal<'info> {
 }
 
 pub fn execute(ctx: Context<ExecuteWithdrawal>) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_VAULT_OUTFLOW)?;
     let request = &ctx.accounts.withdrawal_request;
     require!(
         request.status == WithdrawalStatus::Pending,

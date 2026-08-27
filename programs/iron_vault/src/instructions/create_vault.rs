@@ -1,5 +1,11 @@
 use {
-    crate::{constants::VAULT_SEED, error::IronVaultError, events::VaultCreated, state::Vault},
+    crate::{
+        constants::{PAUSE_VAULT_CONFIG, PROTOCOL_SEED, VAULT_SEED},
+        error::IronVaultError,
+        events::VaultCreated,
+        security::pause::require_protocol_active,
+        state::{ProtocolConfig, Vault},
+    },
     anchor_lang::prelude::*,
 };
 
@@ -8,6 +14,8 @@ use {
 pub struct CreateVault<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     #[account(
         init,
         payer = authority,
@@ -24,6 +32,7 @@ pub fn create_vault_account(
     vault_id: u64,
     guardian: Pubkey,
 ) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_VAULT_CONFIG)?;
     let authority = ctx.accounts.authority.key();
     require!(
         guardian != Pubkey::default() && guardian != authority,

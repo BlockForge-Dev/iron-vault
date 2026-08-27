@@ -1,10 +1,14 @@
 use {
     crate::{
-        constants::{PERMISSION_REQUEST_WITHDRAWAL, VAULT_ASSET_SEED, VAULT_SEED, WITHDRAWAL_SEED},
+        constants::{
+            PAUSE_VAULT_OUTFLOW, PERMISSION_REQUEST_WITHDRAWAL, PROTOCOL_SEED, VAULT_ASSET_SEED,
+            VAULT_SEED, WITHDRAWAL_SEED,
+        },
         error::IronVaultError,
         events::WithdrawalRequested,
+        security::pause::require_protocol_active,
         security::permissions::validate_role_permission,
-        state::{Vault, VaultAsset, WithdrawalRequest, WithdrawalStatus},
+        state::{ProtocolConfig, Vault, VaultAsset, WithdrawalRequest, WithdrawalStatus},
     },
     anchor_lang::prelude::*,
     anchor_spl::token::{Mint, TokenAccount},
@@ -14,6 +18,8 @@ use {
 pub struct RequestWithdrawal<'info> {
     #[account(mut)]
     pub proposer: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     #[account(
         mut,
         seeds = [
@@ -53,6 +59,7 @@ pub struct RequestWithdrawal<'info> {
 }
 
 pub fn request(ctx: Context<RequestWithdrawal>, amount: u64) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_VAULT_OUTFLOW)?;
     authorize(&ctx)?;
     require_gt!(amount, 0, IronVaultError::InvalidVaultAmount);
     require!(!ctx.accounts.vault.paused, IronVaultError::VaultPaused);

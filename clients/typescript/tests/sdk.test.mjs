@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   IRON_VAULT_PROGRAM_ID,
   PDA_SEEDS,
+  PROTOCOL_PAUSE_FLAGS,
   VAULT_PERMISSIONS,
 } from "../dist/index.js";
 
@@ -29,4 +30,8 @@ test("exports every specified PDA namespace", () => {
 test("exports the exact reserved vault permission bits", () => {
   assert.deepEqual(Object.values(VAULT_PERMISSIONS), [1n, 2n, 4n, 8n, 16n, 32n]);
   assert.ok(Object.isFrozen(VAULT_PERMISSIONS));
+});
+test("exports the exact directional protocol pause bits", () => {
+  assert.deepEqual(Object.values(PROTOCOL_PAUSE_FLAGS), [1, 2, 4, 8]);
+  assert.ok(Object.isFrozen(PROTOCOL_PAUSE_FLAGS));
 });

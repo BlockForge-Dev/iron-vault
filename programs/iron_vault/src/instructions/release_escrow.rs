@@ -1,9 +1,10 @@
 use {
     crate::{
-        constants::{ESCROW_SEED, ESCROW_TOKEN_SEED},
+        constants::{ESCROW_SEED, ESCROW_TOKEN_SEED, PAUSE_ESCROW_RELEASE, PROTOCOL_SEED},
         error::IronVaultError,
         events::EscrowReleased,
-        state::{Escrow, EscrowStatus},
+        security::pause::require_protocol_active,
+        state::{Escrow, EscrowStatus, ProtocolConfig},
     },
     anchor_lang::prelude::*,
     anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
@@ -12,6 +13,8 @@ use {
 #[derive(Accounts)]
 pub struct ReleaseEscrow<'info> {
     pub maker: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     #[account(
         mut,
         seeds = [
@@ -44,6 +47,7 @@ pub struct ReleaseEscrow<'info> {
 }
 
 pub fn release(ctx: Context<ReleaseEscrow>) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_ESCROW_RELEASE)?;
     let escrow = &ctx.accounts.escrow;
     require!(
         escrow.status == EscrowStatus::Funded,

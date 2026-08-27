@@ -6,6 +6,21 @@ pub enum IronVaultError {
     /// The supplied protocol version is unsupported.
     #[msg("Unsupported protocol version")]
     UnsupportedVersion,
+    /// Protocol admin and guardian identities must be distinct and non-default.
+    #[msg("Protocol authority configuration is invalid")]
+    InvalidProtocolAuthority,
+    /// Only the stored protocol admin or guardian may manage emergency flags.
+    #[msg("Caller cannot manage protocol pause flags")]
+    UnauthorizedProtocolPause,
+    /// Guardians may add emergency flags but cannot remove any active flag.
+    #[msg("Protocol guardian cannot clear pause flags")]
+    GuardianCannotUnpause,
+    /// Pause masks must contain only explicitly supported scopes.
+    #[msg("Protocol pause mask contains unknown flags")]
+    InvalidPauseFlags,
+    /// The requested protocol operation is currently paused.
+    #[msg("Protocol operation is paused")]
+    ProtocolPaused,
     /// Escrow deposits must contain at least one base unit.
     #[msg("Escrow amount must be greater than zero")]
     InvalidAmount,
@@ -93,6 +108,15 @@ pub enum IronVaultError {
     /// Paused vaults reject outflows.
     #[msg("Vault is paused")]
     VaultPaused,
+    /// Only the stored authority or guardian may pause a vault.
+    #[msg("Caller cannot pause this vault")]
+    UnauthorizedVaultPause,
+    /// Only the stored authority may unpause a vault.
+    #[msg("Only the vault authority can unpause")]
+    UnauthorizedVaultUnpause,
+    /// Pause and unpause must change the current local state.
+    #[msg("Vault pause state is unchanged")]
+    VaultPauseUnchanged,
     /// Role principals must be non-default and distinct from intrinsic vault actors.
     #[msg("Role principal is invalid")]
     InvalidRolePrincipal,

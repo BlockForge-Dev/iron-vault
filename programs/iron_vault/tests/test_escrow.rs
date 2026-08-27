@@ -11,7 +11,8 @@ use {
         state::{Account as SplTokenAccount, AccountState, Mint as SplMint},
     },
     iron_vault::{
-        state::{Escrow, EscrowStatus},
+        constants::{PAUSE_ESCROW_CREATE, PAUSE_ESCROW_RELEASE},
+        state::{Escrow, EscrowStatus, ProtocolConfig},
         ID,
     },
     litesvm::{types::TransactionResult, LiteSVM},
@@ -52,6 +53,12 @@ impl Fixture {
         svm.airdrop(&maker.pubkey(), 10_000_000_000).unwrap();
         svm.airdrop(&recipient, 10_000_000_000).unwrap();
         svm.airdrop(&attacker.pubkey(), 10_000_000_000).unwrap();
+        let initialize = initialize_protocol_instruction(
+            maker.pubkey(),
+            maker.pubkey(),
+            recipient_signer.pubkey(),
+        );
+        send(&mut svm, &maker, initialize).unwrap();
         set_mint(&mut svm, mint, maker.pubkey(), INITIAL_MAKER_BALANCE);
         set_token_account(
             &mut svm,
@@ -131,6 +138,42 @@ fn escrow_addresses(maker: Pubkey, escrow_id: u64) -> (Pubkey, Pubkey) {
     (escrow, escrow_token)
 }
 
+fn protocol_address() -> Pubkey {
+    Pubkey::find_program_address(&[b"protocol"], &ID).0
+}
+
+fn initialize_protocol_instruction(
+    initializer: Pubkey,
+    admin: Pubkey,
+    guardian: Pubkey,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::InitializeProtocol { admin, guardian }.data(),
+        iron_vault::accounts::InitializeProtocol {
+            initializer,
+            protocol_config: protocol_address(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn set_protocol_pause_instruction(
+    caller: Pubkey,
+    flags: u32,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::SetProtocolPause { flags }.data(),
+        iron_vault::accounts::SetProtocolPause {
+            caller,
+            protocol_config: protocol_address(),
+        }
+        .to_account_metas(None),
+    )
+}
+
 fn create_instruction(
     fixture: &Fixture,
     escrow_id: u64,
@@ -168,6 +211,7 @@ fn create_instruction_with_token_program(
         .data(),
         iron_vault::accounts::CreateEscrow {
             maker: fixture.maker.pubkey(),
+            protocol_config: protocol_address(),
             mint: fixture.mint,
             maker_token: fixture.maker_token,
             escrow,
@@ -201,6 +245,7 @@ fn release_instruction(
         &iron_vault::instruction::ReleaseEscrow {}.data(),
         iron_vault::accounts::ReleaseEscrow {
             maker: signer,
+            protocol_config: protocol_address(),
             escrow,
             mint: fixture.mint,
             escrow_token,
@@ -266,6 +311,11 @@ fn escrow_state(svm: &LiteSVM, address: Pubkey) -> Escrow {
     Escrow::try_deserialize(&mut account.data.as_slice()).unwrap()
 }
 
+fn protocol_state(svm: &LiteSVM) -> ProtocolConfig {
+    let account = svm.get_account(&protocol_address()).unwrap();
+    ProtocolConfig::try_deserialize(&mut account.data.as_slice()).unwrap()
+}
+
 fn assert_error_message(result: TransactionResult, expected: &str) {
     let failure = result.expect_err("transaction unexpectedly succeeded");
     assert!(
@@ -292,6 +342,139 @@ fn initialize_still_dispatches() {
         iron_vault::accounts::Initialize {}.to_account_metas(None),
     );
     send(&mut svm, &payer, instruction).unwrap();
+}
+
+#[test]
+fn protocol_initialization_stores_distinct_authorities() {
+    let fixture = Fixture::new();
+    let config = protocol_state(&fixture.svm);
+
+    assert_eq!(config.version, 1);
+    assert_eq!(config.admin, fixture.maker.pubkey());
+    assert_eq!(config.guardian, fixture.recipient_signer.pubkey());
+    assert_eq!(config.pause_flags, 0);
+}
+
+#[test]
+fn protocol_initialization_rejects_invalid_authorities() {
+    for case in 0..3 {
+        let initializer = Keypair::new();
+        let candidate_guardian = Pubkey::new_unique();
+        let (admin, guardian) = match case {
+            0 => (Pubkey::default(), candidate_guardian),
+            1 => (initializer.pubkey(), Pubkey::default()),
+            _ => (initializer.pubkey(), initializer.pubkey()),
+        };
+        let mut svm = LiteSVM::new();
+        svm.add_program(ID, include_bytes!("../../../target/deploy/iron_vault.so"))
+            .unwrap();
+        svm.airdrop(&initializer.pubkey(), 1_000_000_000).unwrap();
+        let instruction = initialize_protocol_instruction(initializer.pubkey(), admin, guardian);
+        let result = send(&mut svm, &initializer, instruction);
+
+        assert_error_message(result, "Protocol authority configuration is invalid");
+        assert!(svm.get_account(&protocol_address()).is_none());
+    }
+}
+
+#[test]
+fn guardian_can_add_pause_flags_but_cannot_clear_them() {
+    let mut fixture = Fixture::new();
+    let guardian = fixture.recipient_signer.pubkey();
+    let add_create = set_protocol_pause_instruction(guardian, PAUSE_ESCROW_CREATE);
+    send(&mut fixture.svm, &fixture.recipient_signer, add_create).unwrap();
+    let add_release =
+        set_protocol_pause_instruction(guardian, PAUSE_ESCROW_CREATE | PAUSE_ESCROW_RELEASE);
+    send(&mut fixture.svm, &fixture.recipient_signer, add_release).unwrap();
+
+    let clear_create = set_protocol_pause_instruction(guardian, PAUSE_ESCROW_RELEASE);
+    let result = send(&mut fixture.svm, &fixture.recipient_signer, clear_create);
+    assert_error_message(result, "Protocol guardian cannot clear pause flags");
+    assert_eq!(
+        protocol_state(&fixture.svm).pause_flags,
+        PAUSE_ESCROW_CREATE | PAUSE_ESCROW_RELEASE
+    );
+}
+
+#[test]
+fn admin_can_clear_pause_flags_but_random_wallet_cannot_manage_them() {
+    let mut fixture = Fixture::new();
+    let guardian = fixture.recipient_signer.pubkey();
+    let pause = set_protocol_pause_instruction(guardian, PAUSE_ESCROW_CREATE);
+    send(&mut fixture.svm, &fixture.recipient_signer, pause).unwrap();
+
+    let unauthorized =
+        set_protocol_pause_instruction(fixture.attacker.pubkey(), PAUSE_ESCROW_RELEASE);
+    let result = send(&mut fixture.svm, &fixture.attacker, unauthorized);
+    assert_error_message(result, "Caller cannot manage protocol pause flags");
+
+    let clear = set_protocol_pause_instruction(fixture.maker.pubkey(), 0);
+    send(&mut fixture.svm, &fixture.maker, clear).unwrap();
+    assert_eq!(protocol_state(&fixture.svm).pause_flags, 0);
+}
+
+#[test]
+fn unknown_pause_flags_are_rejected() {
+    let mut fixture = Fixture::new();
+    let instruction = set_protocol_pause_instruction(fixture.maker.pubkey(), 1 << 31);
+    let result = send(&mut fixture.svm, &fixture.maker, instruction);
+
+    assert_error_message(result, "Protocol pause mask contains unknown flags");
+    assert_eq!(protocol_state(&fixture.svm).pause_flags, 0);
+}
+
+#[test]
+fn escrow_create_pause_is_directional_and_admin_can_resume() {
+    let mut fixture = Fixture::new();
+    let pause =
+        set_protocol_pause_instruction(fixture.recipient_signer.pubkey(), PAUSE_ESCROW_CREATE);
+    send(&mut fixture.svm, &fixture.recipient_signer, pause).unwrap();
+    let expires_at = fixture.now() + 600;
+    let blocked = create_instruction(&fixture, 500, fixture.recipient, 100, expires_at);
+    let result = send(&mut fixture.svm, &fixture.maker, blocked);
+    assert_error_message(result, "Protocol operation is paused");
+    assert!(fixture
+        .svm
+        .get_account(&escrow_addresses(fixture.maker.pubkey(), 500).0)
+        .is_none());
+
+    let clear = set_protocol_pause_instruction(fixture.maker.pubkey(), 0);
+    send(&mut fixture.svm, &fixture.maker, clear).unwrap();
+    let resumed = create_instruction(&fixture, 500, fixture.recipient, 100, expires_at);
+    send(&mut fixture.svm, &fixture.maker, resumed).unwrap();
+}
+
+#[test]
+fn release_pause_never_blocks_expired_refund() {
+    let amount = 100;
+    let (mut fixture, escrow, escrow_token) = funded_fixture(501, amount);
+    let pause =
+        set_protocol_pause_instruction(fixture.recipient_signer.pubkey(), PAUSE_ESCROW_RELEASE);
+    send(&mut fixture.svm, &fixture.recipient_signer, pause).unwrap();
+    let release = release_instruction(
+        &fixture,
+        501,
+        fixture.maker.pubkey(),
+        fixture.recipient_token,
+    );
+    let result = send(&mut fixture.svm, &fixture.maker, release);
+    assert_error_message(result, "Protocol operation is paused");
+    assert_eq!(token_balance(&fixture.svm, escrow_token), amount);
+
+    let expiry = escrow_state(&fixture.svm, escrow).expires_at;
+    set_clock(&mut fixture.svm, expiry);
+    let refund = refund_instruction(
+        &fixture,
+        501,
+        fixture.attacker.pubkey(),
+        fixture.maker_token,
+    );
+    send(&mut fixture.svm, &fixture.attacker, refund).unwrap();
+    assert_eq!(token_balance(&fixture.svm, escrow_token), 0);
+    assert_eq!(
+        escrow_state(&fixture.svm, escrow).status,
+        EscrowStatus::Refunded
+    );
 }
 
 #[test]

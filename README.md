@@ -6,7 +6,8 @@ is Rust using Anchor.
 
 The repository contains the Milestone 0 specification, reproducible Milestone 1
 toolchain, IronVault v0.1 classic SPL Token escrow lifecycle, and a multi-asset
-vault core with role permissions, withdrawal limits, and timelocked withdrawals:
+vault core with role permissions, withdrawal limits, timelocked withdrawals,
+and directional emergency controls:
 
 - [Protocol specification](docs/PROTOCOL_SPEC.md)
 - [Account and PDA model](docs/ACCOUNT_MODEL.md)
@@ -23,8 +24,8 @@ pnpm install --frozen-lockfile
 make test
 ```
 
-The words MUST, MUST NOT, SHOULD, and MAY are normative. A future implementation
-must conform to these documents or change the specification through a reviewed
+The words MUST, MUST NOT, SHOULD, and MAY are normative. The implementation must
+conform to these documents or change the specification through a reviewed
 decision record.
 
 ## Security status
@@ -45,6 +46,11 @@ Authority or `REQUEST_WITHDRAWAL` operators can propose one; execution is
 permissionless only during its stored execution window, and later policy changes
 cannot shorten that request's original timelock. The authority, guardian,
 proposer, or an active `CANCEL_WITHDRAWAL` operator can cancel a pending request.
-Pause controls, Token-2022, and multisig governance are not implemented. The code
-has not been deployed or independently audited and MUST NOT be represented as
-safe for arbitrary third-party mainnet funds.
+The protocol admin and add-only guardian control separate escrow-creation,
+escrow-release, vault-configuration, and vault-outflow pause flags. A vault
+authority or guardian may pause local outflows, but only the authority may
+unpause. Deposits, cancellation, and expired escrow refunds remain available
+during their relevant pauses. An authority address may be controlled by an
+external multisig, but embedded multisig governance and Token-2022 are not
+implemented. The code has not been deployed or independently audited and MUST
+NOT be represented as safe for arbitrary third-party mainnet funds.

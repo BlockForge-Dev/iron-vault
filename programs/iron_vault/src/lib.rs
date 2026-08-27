@@ -24,6 +24,20 @@ pub mod iron_vault {
         instructions::initialize::dispatch(ctx)
     }
 
+    /// Initializes the singleton protocol administration and pause state.
+    pub fn initialize_protocol(
+        ctx: Context<InitializeProtocol>,
+        admin: Pubkey,
+        guardian: Pubkey,
+    ) -> Result<()> {
+        instructions::initialize_protocol::initialize_protocol_account(ctx, admin, guardian)
+    }
+
+    /// Replaces the protocol pause mask under admin or add-only guardian authority.
+    pub fn set_protocol_pause(ctx: Context<SetProtocolPause>, flags: u32) -> Result<()> {
+        instructions::set_protocol_pause::set_pause(ctx, flags)
+    }
+
     /// Creates and atomically funds a fixed-destination classic SPL escrow.
     pub fn create_escrow(
         ctx: Context<CreateEscrow>,
@@ -50,6 +64,16 @@ pub mod iron_vault {
     /// Creates a stable vault namespace controlled by one authority.
     pub fn create_vault(ctx: Context<CreateVault>, vault_id: u64, guardian: Pubkey) -> Result<()> {
         instructions::create_vault::create_vault_account(ctx, vault_id, guardian)
+    }
+
+    /// Pauses local vault outflows. The authority or guardian may call this.
+    pub fn pause_vault(ctx: Context<PauseVault>) -> Result<()> {
+        instructions::pause_vault::pause(ctx)
+    }
+
+    /// Restores local vault outflows. Only the vault authority may call this.
+    pub fn unpause_vault(ctx: Context<UnpauseVault>) -> Result<()> {
+        instructions::pause_vault::unpause(ctx)
     }
 
     /// Registers a classic SPL mint and its canonical vault custody account.

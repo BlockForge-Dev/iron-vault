@@ -1,9 +1,10 @@
 use {
     crate::{
-        constants::{KNOWN_PERMISSIONS, ROLE_SEED, VAULT_SEED},
+        constants::{KNOWN_PERMISSIONS, PAUSE_VAULT_CONFIG, PROTOCOL_SEED, ROLE_SEED, VAULT_SEED},
         error::IronVaultError,
         events::RoleGranted,
-        state::{RoleAssignment, Vault},
+        security::pause::require_protocol_active,
+        state::{ProtocolConfig, RoleAssignment, Vault},
     },
     anchor_lang::prelude::*,
 };
@@ -13,6 +14,8 @@ use {
 pub struct GrantRole<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     #[account(
         seeds = [
             VAULT_SEED,
@@ -35,6 +38,7 @@ pub struct GrantRole<'info> {
 }
 
 pub fn grant(ctx: Context<GrantRole>, principal: Pubkey, permissions: u64) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_VAULT_CONFIG)?;
     require!(
         principal != Pubkey::default()
             && principal != ctx.accounts.vault.authority

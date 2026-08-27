@@ -1,9 +1,10 @@
 use {
     crate::{
-        constants::{ROLE_SEED, VAULT_SEED},
+        constants::{PAUSE_VAULT_CONFIG, PROTOCOL_SEED, ROLE_SEED, VAULT_SEED},
         error::IronVaultError,
         events::RoleRevoked,
-        state::{RoleAssignment, Vault},
+        security::pause::require_protocol_active,
+        state::{ProtocolConfig, RoleAssignment, Vault},
     },
     anchor_lang::prelude::*,
 };
@@ -12,6 +13,8 @@ use {
 #[instruction(principal: Pubkey)]
 pub struct RevokeRole<'info> {
     pub authority: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     #[account(
         seeds = [
             VAULT_SEED,
@@ -33,6 +36,7 @@ pub struct RevokeRole<'info> {
 }
 
 pub fn revoke(ctx: Context<RevokeRole>, _principal: Pubkey) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_VAULT_CONFIG)?;
     let role = &mut ctx.accounts.role_assignment;
     require!(role.active, IronVaultError::RoleNotActive);
     let previous_permissions = role.permissions;

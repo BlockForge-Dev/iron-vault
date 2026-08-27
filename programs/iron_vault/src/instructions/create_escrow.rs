@@ -1,9 +1,10 @@
 use {
     crate::{
-        constants::{ESCROW_SEED, ESCROW_TOKEN_SEED},
+        constants::{ESCROW_SEED, ESCROW_TOKEN_SEED, PAUSE_ESCROW_CREATE, PROTOCOL_SEED},
         error::IronVaultError,
         events::EscrowCreated,
-        state::{Escrow, EscrowStatus},
+        security::pause::require_protocol_active,
+        state::{Escrow, EscrowStatus, ProtocolConfig},
     },
     anchor_lang::prelude::*,
     anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked},
@@ -14,6 +15,8 @@ use {
 pub struct CreateEscrow<'info> {
     #[account(mut)]
     pub maker: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     pub mint: Account<'info, Mint>,
     #[account(
         mut,
@@ -50,6 +53,7 @@ pub fn create(
     amount: u64,
     expires_at: i64,
 ) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_ESCROW_CREATE)?;
     let maker = ctx.accounts.maker.key();
     let now = Clock::get()?.unix_timestamp;
 

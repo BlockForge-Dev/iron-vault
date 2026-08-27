@@ -1,9 +1,12 @@
 use {
     crate::{
-        constants::{VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED},
+        constants::{
+            PAUSE_VAULT_CONFIG, PROTOCOL_SEED, VAULT_ASSET_SEED, VAULT_SEED, VAULT_TOKEN_SEED,
+        },
         error::IronVaultError,
         events::VaultAssetRegistered,
-        state::{Vault, VaultAsset},
+        security::pause::require_protocol_active,
+        state::{ProtocolConfig, Vault, VaultAsset},
     },
     anchor_lang::prelude::*,
     anchor_spl::token::{Mint, Token, TokenAccount},
@@ -13,6 +16,8 @@ use {
 pub struct RegisterAsset<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     #[account(
         seeds = [
             VAULT_SEED,
@@ -47,6 +52,7 @@ pub struct RegisterAsset<'info> {
 }
 
 pub fn register_vault_asset(ctx: Context<RegisterAsset>) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_VAULT_CONFIG)?;
     let asset = &mut ctx.accounts.vault_asset;
     asset.vault = ctx.accounts.vault.key();
     asset.mint = ctx.accounts.mint.key();

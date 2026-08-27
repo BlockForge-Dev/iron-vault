@@ -1,10 +1,14 @@
 use {
     crate::{
-        constants::{PERMISSION_MANAGE_LIMITS, VAULT_ASSET_SEED, VAULT_SEED},
+        constants::{
+            PAUSE_VAULT_CONFIG, PERMISSION_MANAGE_LIMITS, PROTOCOL_SEED, VAULT_ASSET_SEED,
+            VAULT_SEED,
+        },
         error::IronVaultError,
         events::VaultLimitsUpdated,
+        security::pause::require_protocol_active,
         security::permissions::validate_role_permission,
-        state::{Vault, VaultAsset},
+        state::{ProtocolConfig, Vault, VaultAsset},
     },
     anchor_lang::prelude::*,
 };
@@ -12,6 +16,8 @@ use {
 #[derive(Accounts)]
 pub struct UpdateLimits<'info> {
     pub caller: Signer<'info>,
+    #[account(seeds = [PROTOCOL_SEED], bump = protocol_config.bump)]
+    pub protocol_config: Account<'info, ProtocolConfig>,
     #[account(
         seeds = [
             VAULT_SEED,
@@ -42,6 +48,7 @@ pub fn update(
     timelock_seconds: i64,
     request_execution_window_seconds: i64,
 ) -> Result<()> {
+    require_protocol_active(&ctx.accounts.protocol_config, PAUSE_VAULT_CONFIG)?;
     authorize(&ctx)?;
     require!(
         max_per_transaction > 0
