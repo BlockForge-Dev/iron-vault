@@ -1541,6 +1541,7 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "litesvm",
+ "mock-multisig",
  "solana-account",
  "solana-keypair",
  "solana-message",
@@ -1809,6 +1810,13 @@ dependencies = [
  "keccak",
  "rand_core 0.6.4",
  "zeroize",
+]
+
+[[package]]
+name = "mock-multisig"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
 ]
 
 [[package]]

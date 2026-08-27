@@ -65,6 +65,13 @@ pub struct VaultCreated {
 }
 
 #[event]
+pub struct VaultAuthorityUpdated {
+    pub vault: Pubkey,
+    pub previous_authority: Pubkey,
+    pub new_authority: Pubkey,
+}
+
+#[event]
 pub struct VaultPauseUpdated {
     pub vault: Pubkey,
     pub caller: Pubkey,

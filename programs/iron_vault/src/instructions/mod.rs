@@ -13,6 +13,7 @@ pub mod release_escrow;
 pub mod request_withdrawal;
 pub mod revoke_role;
 pub mod set_protocol_pause;
+pub mod set_vault_authority;
 pub mod update_limits;
 pub mod withdraw;
 
@@ -31,5 +32,6 @@ pub use release_escrow::*;
 pub use request_withdrawal::*;
 pub use revoke_role::*;
 pub use set_protocol_pause::*;
+pub use set_vault_authority::*;
 pub use update_limits::*;
 pub use withdraw::*;

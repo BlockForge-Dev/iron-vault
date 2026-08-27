@@ -13,6 +13,7 @@ and directional emergency controls:
 - [Account and PDA model](docs/ACCOUNT_MODEL.md)
 - [State machines](docs/STATE_MACHINES.md)
 - [Threat model](docs/THREAT_MODEL.md)
+- [Upgrade and external multisig policy](docs/UPGRADE_POLICY.md)
 - [Development and reproducible builds](docs/DEVELOPMENT.md)
 
 ## Quick verification
@@ -52,5 +53,8 @@ authority or guardian may pause local outflows, but only the authority may
 unpause. Deposits, cancellation, and expired escrow refunds remain available
 during their relevant pauses. An authority address may be controlled by an
 external multisig, but embedded multisig governance and Token-2022 are not
-implemented. The code has not been deployed or independently audited and MUST
-NOT be represented as safe for arbitrary third-party mainnet funds.
+implemented. A test-only external 2-of-3 CPI harness validates the signer
+abstraction, and a read-only deployment verifier checks finalized upgrade
+authority and bytecode. This does not prove any live Squads configuration. The
+code has not been deployed or independently audited and MUST NOT be represented
+as safe for arbitrary third-party mainnet funds.

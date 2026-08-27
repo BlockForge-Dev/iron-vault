@@ -17,6 +17,7 @@ unit:
 
 sbf:
 	anchor build --ignore-keys --no-idl
+	cargo build-sbf --manifest-path test-programs/mock_multisig/Cargo.toml --sbf-out-dir target/deploy
 
 litesvm: sbf
 	anchor test --skip-build --skip-local-validator --skip-deploy

@@ -78,6 +78,9 @@ pub enum IronVaultError {
     /// Only the vault's stored authority may perform this core operation.
     #[msg("Caller is not the vault authority")]
     InvalidVaultAuthority,
+    /// A replacement authority must be non-default and distinct from current intrinsic actors.
+    #[msg("New vault authority is invalid")]
+    InvalidNewVaultAuthority,
     /// The supplied asset is not enabled for vault operations.
     #[msg("Vault asset is disabled")]
     VaultAssetDisabled,

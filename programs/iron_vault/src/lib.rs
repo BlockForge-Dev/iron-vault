@@ -66,6 +66,14 @@ pub mod iron_vault {
         instructions::create_vault::create_vault_account(ctx, vault_id, guardian)
     }
 
+    /// Rotates vault authority without changing the stable vault PDA namespace.
+    pub fn set_vault_authority(
+        ctx: Context<SetVaultAuthority>,
+        new_authority: Pubkey,
+    ) -> Result<()> {
+        instructions::set_vault_authority::set_authority(ctx, new_authority)
+    }
+
     /// Pauses local vault outflows. The authority or guardian may call this.
     pub fn pause_vault(ctx: Context<PauseVault>) -> Result<()> {
         instructions::pause_vault::pause(ctx)

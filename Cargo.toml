@@ -1,5 +1,5 @@
 [workspace]
-members = ["programs/iron_vault"]
+members = ["programs/iron_vault", "test-programs/mock_multisig"]
 resolver = "2"
 
 [workspace.package]

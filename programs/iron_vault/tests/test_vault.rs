@@ -256,6 +256,24 @@ fn create_vault_instruction(
     )
 }
 
+fn set_vault_authority_instruction(
+    fixture: &Fixture,
+    vault_id: u64,
+    current_authority: Pubkey,
+    new_authority: Pubkey,
+) -> anchor_lang::solana_program::instruction::Instruction {
+    anchor_lang::solana_program::instruction::Instruction::new_with_bytes(
+        ID,
+        &iron_vault::instruction::SetVaultAuthority { new_authority }.data(),
+        iron_vault::accounts::SetVaultAuthority {
+            current_authority,
+            protocol_config: protocol_address(),
+            vault: vault_address(fixture.authority.pubkey(), vault_id),
+        }
+        .to_account_metas(None),
+    )
+}
+
 fn register_asset_instruction(
     fixture: &Fixture,
     authority: Pubkey,
@@ -2279,4 +2297,68 @@ fn protocol_vault_config_pause_blocks_configuration_only() {
     let register = register_asset_instruction(&fixture, fixture.authority.pubkey(), 85);
     let result = send(&mut fixture.svm, &fixture.authority, register);
     assert_error_message(result, "Protocol operation is paused");
+}
+
+#[test]
+fn invalid_vault_authority_rotations_are_rejected() {
+    let vault_id = 87;
+    let (mut fixture, vault, _, _) = registered_fixture(vault_id);
+    for new_authority in [
+        Pubkey::default(),
+        fixture.authority.pubkey(),
+        fixture.guardian.pubkey(),
+    ] {
+        let instruction = set_vault_authority_instruction(
+            &fixture,
+            vault_id,
+            fixture.authority.pubkey(),
+            new_authority,
+        );
+        let result = send(&mut fixture.svm, &fixture.authority, instruction);
+        assert_error_message(result, "New vault authority is invalid");
+    }
+    assert_eq!(
+        vault_state(&fixture.svm, vault).authority,
+        fixture.authority.pubkey()
+    );
+}
+
+#[test]
+fn non_authority_cannot_rotate_vault_authority() {
+    let vault_id = 88;
+    let (mut fixture, vault, _, _) = registered_fixture(vault_id);
+    let instruction = set_vault_authority_instruction(
+        &fixture,
+        vault_id,
+        fixture.attacker.pubkey(),
+        Pubkey::new_unique(),
+    );
+    let result = send(&mut fixture.svm, &fixture.attacker, instruction);
+
+    assert_error_message(result, "Caller is not the vault authority");
+    assert_eq!(
+        vault_state(&fixture.svm, vault).authority,
+        fixture.authority.pubkey()
+    );
+}
+
+#[test]
+fn protocol_config_pause_blocks_vault_authority_rotation() {
+    let vault_id = 89;
+    let (mut fixture, vault, _, _) = registered_fixture(vault_id);
+    let pause = set_protocol_pause_instruction(fixture.guardian.pubkey(), PAUSE_VAULT_CONFIG);
+    send(&mut fixture.svm, &fixture.guardian, pause).unwrap();
+    let instruction = set_vault_authority_instruction(
+        &fixture,
+        vault_id,
+        fixture.authority.pubkey(),
+        Pubkey::new_unique(),
+    );
+    let result = send(&mut fixture.svm, &fixture.authority, instruction);
+
+    assert_error_message(result, "Protocol operation is paused");
+    assert_eq!(
+        vault_state(&fixture.svm, vault).authority,
+        fixture.authority.pubkey()
+    );
 }

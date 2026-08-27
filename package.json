@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "pnpm --filter @iron-vault/sdk build",
-    "test": "pnpm --filter @iron-vault/sdk test",
+    "test": "pnpm --filter @iron-vault/sdk test && node --test scripts/tests/verify-program-metadata.test.mjs",
     "typecheck": "pnpm --filter @iron-vault/sdk typecheck"
   }
 }

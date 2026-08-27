@@ -38,16 +38,19 @@ pnpm install --frozen-lockfile
 make test
 ```
 
-`make test` verifies versions, formatting, Clippy, host unit tests, an SBF build,
-the in-process LiteSVM escrow suite, and SDK tests. `make ci` additionally runs
+`make test` verifies versions, formatting, Clippy, host unit tests, SBF builds for
+IronVault and the test-only mock multisig, the in-process LiteSVM suites, SDK
+tests, and offline upgrade-metadata regressions. `make ci` additionally runs
 RustSec and pnpm dependency audits.
 
 ## Test boundaries
 
 LiteSVM is the fast deterministic execution gate for program instructions. It
 does not prove validator/RPC-specific behavior, scheduling, or exact production
-compute usage. Tests that require those semantics will use a pinned local
-validator in a later milestone.
+compute usage. The mock multisig proves generic external PDA-signer CPI semantics;
+it does not prove a particular deployed Squads version or configuration. Live
+upgrade authority and bytecode require the finalized-cluster procedure in
+`docs/UPGRADE_POLICY.md`.
 
 The committed `Cargo.lock` and `pnpm-lock.yaml` are authoritative dependency
 resolutions. CI always uses locked/frozen modes. Updating a direct dependency

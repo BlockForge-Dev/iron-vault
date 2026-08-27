@@ -34,8 +34,8 @@ jobs:
         run: cargo clippy --workspace --lib -- -D warnings
       - name: Run Rust unit tests
         run: cargo test --workspace --lib --locked
-      - name: Build SBF program
-        run: anchor build --ignore-keys --no-idl
+      - name: Build SBF programs
+        run: make sbf
       - name: Run Anchor LiteSVM test
         run: anchor test --skip-build --skip-local-validator --skip-deploy
       - name: Audit Rust dependencies
