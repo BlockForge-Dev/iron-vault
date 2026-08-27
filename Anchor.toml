@@ -13,4 +13,4 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "cargo test --manifest-path programs/iron_vault/Cargo.toml --test test_initialize"
+test = "cargo test --manifest-path programs/iron_vault/Cargo.toml --tests"

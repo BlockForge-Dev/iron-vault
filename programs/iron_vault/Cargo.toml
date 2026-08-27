@@ -24,12 +24,16 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
 anchor-lang.workspace = true
+# Anchor 1.1.2's token-account init derive references the shared interface
+# helpers at compile time. Runtime acceptance remains classic SPL-only because
+# every instruction requires `Program<Token>`.
 anchor-spl = { workspace = true, features = ["token", "token_2022"] }
 
 [dev-dependencies]
 litesvm = "=0.13.1"
 solana-keypair = "=3.1.0"
 solana-message = "=3.1.0"
+solana-account = "=3.4.0"
 solana-signer = "=3.0.0"
 solana-transaction = "=3.1.0"
 

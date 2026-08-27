@@ -16,7 +16,7 @@ unit:
 	cargo test --workspace --lib --locked
 
 sbf:
-	anchor build --ignore-keys
+	anchor build --ignore-keys --no-idl
 
 litesvm: sbf
 	anchor test --skip-build --skip-local-validator --skip-deploy

@@ -5,7 +5,7 @@ use anchor_lang::prelude::*;
 pub struct Initialize {}
 
 /// Executes a side-effect-free program dispatch.
-pub fn handler(ctx: Context<Initialize>) -> Result<()> {
+pub fn dispatch(ctx: Context<Initialize>) -> Result<()> {
     msg!("IronVault scaffold active: {:?}", ctx.program_id);
     Ok(())
 }

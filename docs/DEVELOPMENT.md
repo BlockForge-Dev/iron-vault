@@ -13,10 +13,13 @@
 | pnpm | 11.23.0 | `packageManager`, `.tool-versions`, CI |
 | LiteSVM | 0.13.1 exact | program dev dependencies |
 
-`anchor-spl` is present with default features disabled. Token-program features
-will be enabled narrowly when their first CPI is implemented and tested. The SDK
-has no runtime dependency yet; the Anchor client will be added only with the
-first transaction builder that exercises it.
+`anchor-spl` has default features disabled. Milestone 2 uses only the classic
+SPL Token CPI surface and every escrow instruction requires `Program<Token>`, so
+Token-2022 program and account inputs are rejected. Anchor 1.1.2's account-init
+derive references shared Token-2022 interface helpers at compile time, which is
+why that Cargo feature is enabled; it does not widen the accepted runtime token
+program. The SDK has no runtime dependency yet; an Anchor client will be added
+with the first transaction builder that exercises it.
 
 LiteSVM 0.13.1 is the patch line paired with the Anchor 1.1 template and Solana
 3.1 client crates. Newer LiteSVM releases track newer Agave internals and require
@@ -25,7 +28,7 @@ an explicit compatibility upgrade rather than an unreviewed floating update.
 ## Clean checkout
 
 Anchor supports Linux and macOS; on Windows use WSL. Install the ordinary system
-build prerequisites, Node 24.10.0, Rustup, and npm, then run:
+build prerequisites and Rustup, then run:
 
 ```bash
 git clone <repository-url> iron-vault
@@ -36,7 +39,7 @@ make test
 ```
 
 `make test` verifies versions, formatting, Clippy, host unit tests, an SBF build,
-the in-process LiteSVM dispatch test, and SDK tests. `make ci` additionally runs
+the in-process LiteSVM escrow suite, and SDK tests. `make ci` additionally runs
 RustSec and pnpm dependency audits.
 
 ## Test boundaries

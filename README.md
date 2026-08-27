@@ -4,8 +4,8 @@ IronVault is a specification-first protocol for fixed-destination escrow and
 policy-controlled token vaults on Solana. The intended implementation language
 is Rust using Anchor.
 
-The repository contains the Milestone 0 specification and Milestone 1 build/test
-scaffold:
+The repository contains the Milestone 0 specification, reproducible Milestone 1
+toolchain, and Milestone 2 classic SPL Token escrow implementation:
 
 - [Protocol specification](docs/PROTOCOL_SPEC.md)
 - [Account and PDA model](docs/ACCOUNT_MODEL.md)
@@ -28,8 +28,8 @@ decision record.
 
 ## Security status
 
-Only a side-effect-free Anchor dispatch scaffold exists; custody logic has not
-been implemented, deployed, or audited. The documents and green scaffold are not
-evidence that IronVault is safe for funds. Even after implementation, the
-protocol must not be represented as safe for arbitrary third-party mainnet funds
-without an independent security review.
+Milestone 2 implements only fixed-destination `create_escrow` and
+maker-authorized `release_escrow` for the classic SPL Token program. Refunds,
+protocol pause controls, Token-2022, policy vaults, and multisig governance are
+not implemented. The code has not been deployed or independently audited and
+MUST NOT be represented as safe for arbitrary third-party mainnet funds.
