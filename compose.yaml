@@ -3,16 +3,22 @@ name: iron-vault-local
 services:
   validator:
     image: anzaxyz/agave:v3.1.10
+    # Agave 3.1 uses io_uring for ledger filesystem operations. Docker
+    # Desktop's default seccomp profile blocks the required syscalls.
+    security_opt:
+      - seccomp=unconfined
+    # The image's default solana-run.sh entrypoint builds its own validator
+    # command and ignores Compose command arguments, including --bpf-program.
+    # Agave rejects 0.0.0.0 as its primary gossip address, so bind to the
+    # container IPv4 address and make the healthcheck use that same address.
+    entrypoint: ["/bin/bash", "-lc"]
     command:
-      - solana-test-validator
-      - --reset
-      - --ledger
-      - /ledger
-      - --rpc-bind-address
-      - 0.0.0.0
-      - --bpf-program
-      - 2UWmTuefm4gqbfuZP36NSJMMSKLM4Rbop25jf1uBZAu1
-      - /program/iron_vault.so
+      - >-
+        exec solana-test-validator
+        --reset
+        --ledger /ledger
+        --bind-address "$$(hostname -i | cut -d' ' -f1)"
+        --bpf-program 2UWmTuefm4gqbfuZP36NSJMMSKLM4Rbop25jf1uBZAu1 /program/iron_vault.so
     ports:
       - "8899:8899"
       - "8900:8900"
@@ -20,7 +26,11 @@ services:
       - validator-ledger:/ledger
       - ./target/deploy/iron_vault.so:/program/iron_vault.so:ro
     healthcheck:
-      test: ["CMD", "solana", "cluster-version", "--url", "http://127.0.0.1:8899"]
+      test:
+        [
+          "CMD-SHELL",
+          "solana cluster-version --url http://$$(hostname -i | cut -d' ' -f1):8899",
+        ]
       interval: 3s
       timeout: 2s
       retries: 30

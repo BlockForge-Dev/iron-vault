@@ -12,5 +12,8 @@
     "test": "pnpm --filter @iron-vault/sdk test && pnpm --filter @iron-vault/cli test && node --test scripts/tests/verify-program-metadata.test.mjs",
     "typecheck": "pnpm --filter @iron-vault/sdk typecheck && pnpm --filter @iron-vault/cli typecheck",
     "iron-vault": "node clients/cli/dist/index.js"
+  },
+  "devDependencies": {
+    "@solana/web3.js": "1.98.4"
   }
 }
