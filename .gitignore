@@ -6,6 +6,8 @@ node_modules/
 .pnpm-store/
 *.log
 .DS_Store
+.env
+local-ledger/
 
 # Generated deployment keypairs are secrets. Never commit them.
 *-keypair.json

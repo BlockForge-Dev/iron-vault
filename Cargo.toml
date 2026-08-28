@@ -1,5 +1,6 @@
 [workspace]
 members = ["programs/iron_vault", "test-programs/mock_multisig"]
+exclude = ["observer"]
 resolver = "2"
 
 [workspace.package]

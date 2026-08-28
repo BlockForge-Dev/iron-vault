@@ -16,6 +16,8 @@ and directional emergency controls:
 - [Upgrade and external multisig policy](docs/UPGRADE_POLICY.md)
 - [Token-2022 security policy](docs/TOKEN_2022_POLICY.md)
 - [Events, TypeScript SDK, and CLI](docs/SDK_AND_CLI.md)
+- [Read-only observer and local stack](docs/OBSERVER.md)
+- [Security testing campaign](docs/SECURITY_TESTING.md)
 - [Development and reproducible builds](docs/DEVELOPMENT.md)
 
 ## Quick verification
@@ -84,3 +86,12 @@ Run `pnpm build`, then `pnpm iron-vault --help`. The packaged CLI exposes the
 same entry point directly as `iron-vault`. See the
 [SDK and CLI guide](docs/SDK_AND_CLI.md) for signer, RPC, token-account, and
 finality boundaries.
+
+## Read-only observer
+
+`observer/` is a separately locked Rust service that consumes finalized Solana
+logs, reconciles missed transactions through RPC, decodes all version-1 events,
+and stores an append-only audit log plus disposable PostgreSQL projections. It
+exposes `/healthz`, `/readyz`, and Prometheus `/metrics`. It has no signer,
+private key, or transaction-submission path: Solana remains the sole source of
+truth. See the [observer guide](docs/OBSERVER.md).

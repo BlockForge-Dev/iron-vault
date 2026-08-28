@@ -40,8 +40,39 @@ make test
 
 `make test` verifies versions, formatting, Clippy, host unit tests, SBF builds for
 IronVault and the test-only mock multisig, the in-process LiteSVM suites, SDK
-and CLI builds/tests, and offline upgrade-metadata regressions. `make ci` additionally runs
-RustSec and pnpm dependency audits.
+and CLI builds/tests, the separately locked observer crate, and offline
+upgrade-metadata regressions. `make ci` additionally runs RustSec against both
+Cargo lockfiles and runs the pnpm dependency audit.
+
+## Validator and Docker gates
+
+`make local-up` builds the SBF program and starts the pinned validator,
+PostgreSQL, observer, and Prometheus Compose services. `make e2e` submits a real
+RPC transaction and waits for the observer to persist `ProtocolInitialized`.
+`make local-down` stops the services without deleting named volumes; use
+`docker compose down --volumes` only when local data destruction is intended.
+
+The Solana program does not run as an application container in production. It
+runs in the validator runtime. Docker is used here for the observer, monitoring,
+local validator, databases, and reproducible build environments.
+
+The observer has its own `observer/Cargo.lock`. Keeping host-service networking
+dependencies outside the SBF workspace prevents them from re-resolving the
+program and LiteSVM graph.
+
+SQLx 0.8.6 records its optional macro/MySQL dependency graph in the lockfile,
+including `rsa 0.9.10` and `RUSTSEC-2023-0071`, even when only PostgreSQL and
+runtime migrations are enabled. `cargo tree -i rsa` is empty for the observer.
+CI first asserts that this crate remains unreachable, then narrowly ignores that
+one lockfile-only advisory while failing every other observer RustSec advisory.
+If RSA ever becomes reachable, the assertion fails before the audit. The direct
+`anyhow` pin is 1.0.104, which includes the fix for `RUSTSEC-2026-0190`.
+
+Run `make verifiable-build` to execute Anchor's Docker-backed deterministic
+build and print the SHA-256 digest. To compare a deployed program with that
+artifact, run `make verify-deployment PROGRAM_ID=<address>` against the intended
+cluster configuration. Deployment and verification are external-state changes;
+they are never part of `make test`.
 
 The SDK pins `@solana/web3.js`. Canonical associated-token derivation and its
 six-account idempotent-create instruction are implemented locally and tested;

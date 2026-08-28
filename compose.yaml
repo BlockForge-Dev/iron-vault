@@ -1,0 +1,82 @@
+name: iron-vault-local
+
+services:
+  validator:
+    image: anzaxyz/agave:v3.1.10
+    command:
+      - solana-test-validator
+      - --reset
+      - --ledger
+      - /ledger
+      - --rpc-bind-address
+      - 0.0.0.0
+      - --bpf-program
+      - 2UWmTuefm4gqbfuZP36NSJMMSKLM4Rbop25jf1uBZAu1
+      - /program/iron_vault.so
+    ports:
+      - "8899:8899"
+      - "8900:8900"
+    volumes:
+      - validator-ledger:/ledger
+      - ./target/deploy/iron_vault.so:/program/iron_vault.so:ro
+    healthcheck:
+      test: ["CMD", "solana", "cluster-version", "--url", "http://127.0.0.1:8899"]
+      interval: 3s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  postgres:
+    image: postgres:17.6-alpine3.22
+    environment:
+      POSTGRES_DB: iron_vault
+      POSTGRES_USER: iron_vault
+      POSTGRES_PASSWORD: local-development-only
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iron_vault -d iron_vault"]
+      interval: 3s
+      timeout: 2s
+      retries: 30
+
+  observer:
+    build:
+      context: .
+      dockerfile: observer/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://iron_vault:local-development-only@postgres:5432/iron_vault
+      IRONVAULT_RPC_HTTP_URL: http://validator:8899
+      IRONVAULT_RPC_WS_URL: ws://validator:8900
+      IRONVAULT_PROGRAM_ID: 2UWmTuefm4gqbfuZP36NSJMMSKLM4Rbop25jf1uBZAu1
+      IRONVAULT_LISTEN_ADDR: 0.0.0.0:8080
+      IRONVAULT_LARGE_WITHDRAWAL_THRESHOLD: 50000
+      RUST_LOG: iron_vault_observer=info
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      validator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:v3.6.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - observer
+
+volumes:
+  validator-ledger:
+  postgres-data:
